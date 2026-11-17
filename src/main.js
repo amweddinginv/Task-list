@@ -200,6 +200,19 @@ function remindText(iso){
   const time = d.toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'});
   return dueText(ymd(d)) + ', ' + time;
 }
+// The due time is stored as reminder_at: the notification fires at the due date + time.
+const dueTime = t => { if(!t.reminderAt) return ''; const d = new Date(t.reminderAt); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+const withTime = (dateStr, hhmm) => { const [h,m] = hhmm.split(':').map(Number); const d = parseYmd(dateStr); d.setHours(h, m, 0, 0); return d.toISOString(); };
+const timeText = iso => new Date(iso).toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'});
+function dueLabel(t){ return dueText(t.due) + (t.reminderAt ? ', ' + timeText(t.reminderAt) : ''); }
+function isOver(t){ const n = dayDiff(t.due); return n < 0 || (n === 0 && t.reminderAt && new Date(t.reminderAt) < new Date()); }
+function dueCls(t){ return isOver(t) ? 'due-over' : (dayDiff(t.due) === 0 ? 'due-today' : ''); }
+function dueFields(t, dateStr){
+  const f = {due: dateStr};
+  if(!dateStr){ f.repeat = null; f.reminderAt = null; f.remindedAt = null; }
+  else if(t.reminderAt){ f.reminderAt = withTime(dateStr, dueTime(t)); f.remindedAt = null; }
+  return f;
+}
 const toLocalInput = iso => { if(!iso) return ''; const d = new Date(iso); return ymd(d) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()); };
 const fromLocalInput = v => v ? new Date(v).toISOString() : null;
 
@@ -208,8 +221,8 @@ function rowHTML(t){
   const p = prio(t);
   const steps = arr(t.steps), links = arr(t.links), files = arr(t.files);
   const meta = [];
-  if(t.due && !t.done) meta.push(`<span class="${dueClass(t.due)}">${ICON.cal}${dayDiff(t.due)<0?'Overdue, ':''}${esc(dueText(t.due))}</span>`);
-  if(t.reminderAt && !t.done) meta.push(`<span class="bell" title="Reminder">${ICON.bell}${esc(remindText(t.reminderAt))}</span>`);
+  if(t.due && !t.done) meta.push(`<span class="${dueCls(t)}">${t.reminderAt ? ICON.bell : ICON.cal}${isOver(t)?'Overdue, ':''}${esc(dueLabel(t))}</span>`);
+  else if(t.reminderAt && !t.done) meta.push(`<span class="bell" title="Reminder">${ICON.bell}${esc(remindText(t.reminderAt))}</span>`);
   if(t.repeat) meta.push(`<span title="Repeats ${esc(repeatName(t.repeat).toLowerCase())}">${ICON.repeat}</span>`);
   if(steps.length) meta.push(`<span>${steps.filter(s=>s.done).length} of ${steps.length}</span>`);
   if(p==='low' && !t.done) meta.push(`<span class="chip low">Low priority</span>`);
@@ -292,12 +305,10 @@ function renderPanel(force){
           <button data-act="due" data-v="nextweek">Next week</button>
         </div>
         <label class="date-field">${ICON.cal}<input type="date" id="dueInput" value="${esc(t.due||'')}" aria-label="Pick a due date"></label>
-        ${t.due ? `<div class="due-now ${dn<0?'over':(dn===0?'today':'')}">${dn<0?'Overdue, due ':'Due '}${esc(dueText(t.due))}<button class="x" data-act="due-clear" aria-label="Remove due date">${ICON.x}</button></div>` : ''}
+        <label class="date-field">${ICON.bell}<input type="time" id="timeInput" value="${esc(dueTime(t))}" aria-label="Due time (you get a notification then)">${t.reminderAt ? `<button class="x" type="button" data-act="time-clear" aria-label="Remove due time">${ICON.x}</button>` : '<span class="hint">Add time</span>'}</label>
+        ${t.due ? `<div class="due-now ${isOver(t)?'over':(dn===0?'today':'')}">${isOver(t)?'Overdue, due ':'Due '}${esc(dueLabel(t))}${t.reminderAt ? `<span class="notif">${t.remindedAt ? '· notified' : '· notification on'}</span>` : ''}<button class="x" data-act="due-clear" aria-label="Remove due date">${ICON.x}</button></div>` : ''}
         <div class="row-label">${ICON.repeat}REPEAT</div>
         <div class="seg">${REPEATS.map(([v,l])=>`<button data-act="repeat" data-v="${v}" class="${(t.repeat||'')===v?'on':''}">${l}</button>`).join('')}</div>
-        <div class="row-label">${ICON.bell}REMIND ME</div>
-        <label class="date-field">${ICON.bell}<input type="datetime-local" id="remindInput" value="${esc(toLocalInput(t.reminderAt))}" aria-label="Reminder date and time"></label>
-        ${t.reminderAt ? `<div class="remind-now ${t.remindedAt?'sent':''}">${t.remindedAt?'Reminded ':'Reminder '}${esc(remindText(t.reminderAt))}<button class="x" data-act="remind-clear" aria-label="Remove reminder">${ICON.x}</button></div>` : ''}
       </div>
 
       <div class="card">
@@ -583,10 +594,10 @@ panel.addEventListener('click', e => {
       const v = b.dataset.v; const base = today0(); let d = base;
       if(v==='tomorrow') d = addDays(base,1);
       if(v==='nextweek') d = addDays(base, ((8 - base.getDay()) % 7) || 7);
-      patch(id, {due: ymd(d)}); renderPanel(true); break;
+      patch(id, dueFields(t, ymd(d))); renderPanel(true); break;
     }
-    case 'due-clear': patch(id, {due:null, repeat:null}); renderPanel(true); break;
-    case 'remind-clear': patch(id, {reminderAt:null, remindedAt:null}); renderPanel(true); break;
+    case 'due-clear': patch(id, dueFields(t, null)); renderPanel(true); break;
+    case 'time-clear': e.preventDefault(); patch(id, {reminderAt:null, remindedAt:null}); renderPanel(true); break;
     case 'repeat': {
       const v = b.dataset.v || null;
       const f = {repeat: v};
@@ -612,13 +623,16 @@ panel.addEventListener('change', e => {
   const id = selected; if(!tasks.get(id)) return;
   if(e.target.id === 'dueInput'){
     const v = e.target.value;
-    patch(id, v ? {due: v} : {due:null, repeat:null});
+    patch(id, dueFields(tasks.get(id), v || null));
     e.target.blur(); renderPanel(true);
   }
-  if(e.target.id === 'remindInput'){
-    const iso = fromLocalInput(e.target.value);
-    if(iso !== (tasks.get(id).reminderAt || null)) patch(id, {reminderAt: iso, remindedAt: null});
-    if(iso && !pushOn) flash('Tap the bell at the top to turn on notifications');
+  if(e.target.id === 'timeInput'){
+    const t = tasks.get(id), v = e.target.value;
+    if(!v){ if(t.reminderAt) patch(id, {reminderAt:null, remindedAt:null}); return; }
+    const due = t.due || ymd(today0());
+    const iso = withTime(due, v);
+    if(iso !== t.reminderAt || due !== t.due) patch(id, {due, reminderAt: iso, remindedAt: null});
+    if(!pushOn) flash('Tap the bell at the top to turn on notifications');
   }
   if(e.target.id === 'fileInput'){
     const list = [...(e.target.files||[])];
@@ -663,7 +677,7 @@ panel.addEventListener('focusout', e => {
     clearTimeout(typeTimer); commitText(e.target);
     setTimeout(()=>{ if(!editing()) renderPanel(true); }, 0);
   }
-  if(e.target.id==='remindInput') setTimeout(()=>{ if(!editing()) renderPanel(true); }, 0);
+  if(e.target.id==='timeInput') setTimeout(()=>{ if(!editing()) renderPanel(true); }, 0);
 });
 panel.addEventListener('keydown', e => {
   if(e.target.id==='pTitle' && e.key==='Enter'){ e.preventDefault(); e.target.blur(); }

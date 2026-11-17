@@ -39,7 +39,7 @@ Any Claude chat with the Supabase connector can manage the list directly. Run SQ
 | `"order"` | double precision | Position in the list. **A smaller number is higher in the list.** Leave it out on insert to put the task at the bottom. Put it in double quotes, because `order` is a SQL keyword. |
 | `due` | date | Due date, such as `'2026-11-20'`. Shown blue when it is today and red when it is overdue. |
 | `repeat` | text | `null`, `'daily'`, `'weekdays'`, `'weekly'`, `'monthly'` or `'yearly'`. Needs a `due` date. Ticking it off **in the app** creates the next one. |
-| `reminder_at` | timestamptz | When to send a push, such as `'2026-11-20 15:30 America/Toronto'`. |
+| `reminder_at` | timestamptz | The **due time**: the task's due date plus a time, such as `'2026-11-20 15:30 America/Toronto'`. A push notification is sent at this moment. In the app it shows as "Due Fri, Nov 20, 3:30 PM". Keep it on the same day as `due`. `null` means no time: the task gets the 9 am "due today" push instead. |
 | `reminded_at` | timestamptz | Set when the reminder push was sent. Reset automatically when `reminder_at` changes. |
 | `due_notified` | date | The day the 9 am "due today" push was sent. Internal. |
 | `notes` | text | Free-text notes. |
@@ -65,7 +65,7 @@ select id, title, due, important from public.tasks where not done order by "orde
 -- Add a task (goes to the bottom)
 insert into public.tasks (title, notes) values ('Book the car service', 'Ask about winter tires');
 
--- Add a starred task at the top, due Friday, with a 9:30 reminder
+-- Add a starred task at the top, due Friday at 9:30 (notification at 9:30)
 insert into public.tasks (title, important, due, reminder_at, "order")
 values ('Call the venue', true, '2026-11-20', '2026-11-20 09:30 America/Toronto',
         (select coalesce(min("order"), 1000) - 1000 from public.tasks where not done));
