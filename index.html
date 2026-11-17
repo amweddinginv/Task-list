@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Aboud's Tasks</title>
+  <meta name="description" content="Aboud's to-do list">
+  <meta name="theme-color" content="#faf9f8" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#11100f" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Tasks">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+<div class="auth" id="auth" hidden>
+  <div class="card">
+    <h1>Aboud's Tasks</h1>
+    <form id="emailForm" style="display:flex;flex-direction:column;gap:12px">
+      <p>Sign in with your email. We'll send you a code.</p>
+      <input id="email" type="email" inputmode="email" autocomplete="email" placeholder="Email" aria-label="Email" required>
+      <button class="btn" type="submit" id="emailBtn">Send code</button>
+    </form>
+    <form id="codeForm" hidden style="display:flex;flex-direction:column;gap:12px">
+      <p id="codeMsg">Check your email and type the code here.</p>
+      <input id="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="10" placeholder="Code" aria-label="Code from the email">
+      <button class="btn" type="submit" id="codeBtn">Sign in</button>
+      <button class="link-btn" type="button" id="backBtn">Use a different email</button>
+    </form>
+    <p class="err" id="authErr" hidden></p>
+  </div>
+</div>
+
+<div class="app" id="app" hidden>
+  <main class="main">
+    <div class="wrap">
+      <header>
+        <div>
+          <h1>Aboud's Tasks</h1>
+          <p id="today"></p>
+        </div>
+        <div class="tools">
+          <label class="search">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
+            <input id="search" type="search" placeholder="Search" aria-label="Search tasks" autocomplete="off">
+            <button class="x" id="searchClear" type="button" hidden aria-label="Clear search"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 3l6 6M9 3l-6 6"/></svg></button>
+          </label>
+          <button class="icon" id="bellBtn" type="button" aria-label="Turn on notifications" title="Notifications"></button>
+          <button class="icon" id="signOutBtn" type="button" aria-label="Sign out" title="Sign out"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5H3.5v11H6M10 5l3 3-3 3M13 8H6.5"/></svg></button>
+        </div>
+      </header>
+      <form class="add" id="addForm" autocomplete="off">
+        <span class="plus" aria-hidden="true">+</span>
+        <input id="addInput" placeholder="Add a task" aria-label="Add a task" maxlength="300">
+        <button class="go" id="addGo" type="submit" hidden>Add</button>
+      </form>
+      <div id="list" class="list" aria-live="polite"></div>
+      <button class="group-btn" id="doneToggle" hidden aria-expanded="false">
+        <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 2l4 4-4 4"/></svg>
+        Completed <span class="n" id="doneCount"></span>
+      </button>
+      <div id="doneList" class="list" hidden></div>
+      <p class="note" id="status"></p>
+    </div>
+  </main>
+  <aside class="panel" id="panel" hidden aria-label="Task details"></aside>
+</div>
+<div class="saving" id="saving">Saved</div>
+<div class="toast" id="toast" hidden role="status"><span id="toastMsg"></span><button id="toastBtn" type="button">Undo</button><div class="bar" id="toastBar"></div></div>
+<div class="viewer" id="viewer" hidden role="dialog" aria-label="File preview"></div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
