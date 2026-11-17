@@ -5,7 +5,7 @@ A one-list to-do app in the Microsoft To Do style. It's an installable web app (
 - **App:** Vite + vanilla JS (`index.html`, `src/main.js`, `src/style.css`)
 - **Data:** Supabase table `public.tasks`, with files in the private Storage bucket `task-files`. Realtime is on, so changes show up live on every device.
 - **Login:** email and password (Supabase Auth), so it works inside the home screen app and with the default Supabase emails (no SMTP needed). The first account to sign in becomes the owner, and later sign-ups are refused. Row level security limits every row to its owner.
-- **Reminders:** Web Push. The Edge Function `send-reminders` (`supabase/functions/send-reminders`) is run every 5 minutes by pg_cron. It sends:
+- **Reminders:** Web Push. The Edge Function `send-reminders` (`supabase/functions/send-reminders`) is run every minute by pg_cron. It sends:
   - a push when a task's `reminder_at` time arrives
   - a 9 am push for tasks due that day that have no reminder time
 
@@ -104,4 +104,4 @@ These live in Supabase. The schema was applied as migration `tasks_schema`.
   - `single_owner_guard` closes sign-ups after the first account
   - `claim_orphan_tasks` gives unowned rows to the owner
 - **Function:** `get_push_config()` reads the Vault secrets. Only the service role can call it.
-- **Cron job:** `send-reminders` runs every 5 minutes and posts to the Edge Function with the `x-cron-secret` header.
+- **Cron job:** `send-reminders` runs every minute and posts to the Edge Function with the `x-cron-secret` header.
