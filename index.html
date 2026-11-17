@@ -20,17 +20,20 @@
 <div class="auth" id="auth" hidden>
   <div class="card">
     <h1>Aboud's Tasks</h1>
-    <form id="emailForm" style="display:flex;flex-direction:column;gap:12px">
-      <p>Sign in with your email. We'll send you a code.</p>
-      <input id="email" type="email" inputmode="email" autocomplete="email" placeholder="Email" aria-label="Email" required>
-      <button class="btn" type="submit" id="emailBtn">Send code</button>
+    <form id="loginForm" style="display:flex;flex-direction:column;gap:12px">
+      <p id="loginMsg">Sign in to see your tasks.</p>
+      <input id="email" type="email" inputmode="email" autocomplete="username" placeholder="Email" aria-label="Email" required>
+      <input id="password" type="password" autocomplete="current-password" placeholder="Password" aria-label="Password" required minlength="8">
+      <button class="btn" type="submit" id="loginBtn">Sign in</button>
+      <button class="link-btn" type="button" id="modeBtn">First time here? Create your account</button>
+      <button class="link-btn" type="button" id="forgotBtn">Forgot password?</button>
     </form>
-    <form id="codeForm" hidden style="display:flex;flex-direction:column;gap:12px">
-      <p id="codeMsg">Check your email and type the code here.</p>
-      <input id="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="10" placeholder="Code" aria-label="Code from the email">
-      <button class="btn" type="submit" id="codeBtn">Sign in</button>
-      <button class="link-btn" type="button" id="backBtn">Use a different email</button>
+    <form id="newPassForm" hidden style="display:flex;flex-direction:column;gap:12px">
+      <p>Choose a new password.</p>
+      <input id="newPass" type="password" autocomplete="new-password" placeholder="New password (8+ characters)" aria-label="New password" required minlength="8">
+      <button class="btn" type="submit" id="newPassBtn">Save password</button>
     </form>
+    <p class="note" id="authOk" hidden></p>
     <p class="err" id="authErr" hidden></p>
   </div>
 </div>

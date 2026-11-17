@@ -828,29 +828,62 @@ function startData(){
   setTimeout(()=>{ if(!loaded) setStatus("Can't reach your saved tasks yet. They'll appear when the connection is back."); }, 10000);
 }
 
-// ---------- sign in (email code; works inside the home screen app) ----------
-let authEmail = '';
+// ---------- sign in (email + password; works inside the home screen app) ----------
+let signUpMode = false, recovering = false;
 const authErr = m => { $('#authErr').textContent = m || ''; $('#authErr').hidden = !m; };
-$('#emailForm').addEventListener('submit', async e => {
-  e.preventDefault(); authErr('');
-  authEmail = $('#email').value.trim(); if(!authEmail) return;
-  $('#emailBtn').disabled = true; $('#emailBtn').textContent = 'Sending…';
-  const { error } = await sb.auth.signInWithOtp({ email: authEmail, options: { emailRedirectTo: location.origin } });
-  $('#emailBtn').disabled = false; $('#emailBtn').textContent = 'Send code';
-  if(error){ authErr(/closed|not allowed|signups|database error/i.test(error.message) ? 'This list belongs to someone else.' : /rate|seconds/i.test(error.message) ? 'Please wait a minute, then try again.' : error.message); return; }
-  $('#emailForm').hidden = true; $('#codeForm').hidden = false;
-  $('#codeMsg').textContent = `We sent a code to ${authEmail}. Type it here.`;
-  $('#code').focus();
+const authOk = m => { $('#authOk').textContent = m || ''; $('#authOk').hidden = !m; };
+function setMode(up){
+  signUpMode = up;
+  $('#loginMsg').textContent = up ? 'Create your account. Pick a password you will remember.' : 'Sign in to see your tasks.';
+  $('#loginBtn').textContent = up ? 'Create account' : 'Sign in';
+  $('#modeBtn').textContent = up ? 'Already have an account? Sign in' : 'First time here? Create your account';
+  $('#password').setAttribute('autocomplete', up ? 'new-password' : 'current-password');
+  $('#password').placeholder = up ? 'Password (8+ characters)' : 'Password';
+  $('#forgotBtn').hidden = up;
+  authErr(''); authOk('');
+}
+$('#modeBtn').addEventListener('click', () => setMode(!signUpMode));
+function niceAuthError(error){
+  const m = (error && error.message) || '';
+  if(/invalid login/i.test(m)) return 'Wrong email or password.';
+  if(/not confirmed/i.test(m)) return 'Open the email we sent you and tap "Confirm email address" first, then sign in here.';
+  if(/closed|not allowed|signups|database error/i.test(m)) return 'This list belongs to someone else.';
+  if(/rate|seconds|too many/i.test(m)) return 'Too many tries. Please wait a few minutes.';
+  if(/password/i.test(m)) return 'Use a password with at least 8 characters.';
+  return m || 'Something went wrong. Try again.';
+}
+$('#loginForm').addEventListener('submit', async e => {
+  e.preventDefault(); authErr(''); authOk('');
+  const email = $('#email').value.trim(), password = $('#password').value;
+  if(!email || !password) return;
+  const btn = $('#loginBtn'); const label = btn.textContent;
+  btn.disabled = true; btn.textContent = signUpMode ? 'Creating…' : 'Signing in…';
+  let res;
+  if(signUpMode) res = await sb.auth.signUp({ email, password, options: { emailRedirectTo: location.origin } });
+  else res = await sb.auth.signInWithPassword({ email, password });
+  btn.disabled = false; btn.textContent = label;
+  if(res.error){ authErr(niceAuthError(res.error)); return; }
+  if(signUpMode && !res.data.session){
+    setMode(false);
+    authOk('Almost done. Open the email from Supabase and tap "Confirm email address". Then come back here and tap Sign in.');
+  }
 });
-$('#codeForm').addEventListener('submit', async e => {
-  e.preventDefault(); authErr('');
-  const token = $('#code').value.replace(/\D/g, ''); if(!token) return;
-  $('#codeBtn').disabled = true; $('#codeBtn').textContent = 'Signing in…';
-  const { error } = await sb.auth.verifyOtp({ email: authEmail, token, type: 'email' });
-  $('#codeBtn').disabled = false; $('#codeBtn').textContent = 'Sign in';
-  if(error) authErr('That code did not work. Check it, or send a new one.');
+$('#forgotBtn').addEventListener('click', async () => {
+  authErr(''); authOk('');
+  const email = $('#email').value.trim();
+  if(!email){ authErr('Type your email first, then tap "Forgot password?" again.'); return; }
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin });
+  if(error){ authErr(niceAuthError(error)); return; }
+  authOk('We sent you an email. Tap the link in it to choose a new password, then sign in here with it.');
 });
-$('#backBtn').addEventListener('click', () => { $('#codeForm').hidden = true; $('#emailForm').hidden = false; authErr(''); });
+$('#newPassForm').addEventListener('submit', async e => {
+  e.preventDefault(); authErr('');
+  const { error } = await sb.auth.updateUser({ password: $('#newPass').value });
+  if(error){ authErr(niceAuthError(error)); return; }
+  recovering = false; $('#newPassForm').hidden = true; $('#loginForm').hidden = false;
+  flash('Password saved');
+  showSignedIn((await sb.auth.getUser()).data.user);
+});
 $('#signOutBtn').addEventListener('click', async () => {
   if(!confirm('Sign out of your tasks?')) return;
   await sb.auth.signOut();
@@ -859,15 +892,21 @@ $('#signOutBtn').addEventListener('click', async () => {
 function showSignedIn(u){
   const was = user && user.id;
   user = u;
+  if(recovering){ $('#auth').hidden = false; $('#app').hidden = true; return; }
   $('#auth').hidden = !!u; $('#app').hidden = !u;
   if(u && was !== u.id){ startData(); refreshBell(); }
   if(!u){
     if(channel){ sb.removeChannel(channel); channel = null; }
     tasks = new Map(); selected = null; loaded = false;
-    $('#codeForm').hidden = true; $('#emailForm').hidden = false;
+    $('#loginForm').hidden = false; $('#newPassForm').hidden = true; $('#password').value = '';
   }
 }
 sb.auth.onAuthStateChange((event, session) => {
+  if(event === 'PASSWORD_RECOVERY'){
+    recovering = true;
+    setTimeout(() => { $('#auth').hidden = false; $('#app').hidden = true; $('#loginForm').hidden = true; $('#newPassForm').hidden = false; }, 0);
+    return;
+  }
   if(event === 'TOKEN_REFRESHED' && channel) sb.realtime.setAuth(session.access_token);
   // run outside the auth callback to avoid blocking supabase-js
   setTimeout(() => showSignedIn(session ? session.user : null), 0);
