@@ -401,3 +401,55 @@ input:disabled,select:disabled,textarea:disabled{opacity:.55}
 .ch-card button{padding:14px;border-top:1px solid var(--border);font-size:16px;color:var(--ol)}
 .ch-card button.danger{color:var(--high);font-weight:400;border-radius:0}
 .ch-card button.cancel{font-weight:600}
+
+/* ---------- mood ---------- */
+.mood{max-width:640px;margin:0 auto;padding:max(16px,calc(env(safe-area-inset-top,0px) + 8px)) max(14px,env(safe-area-inset-right,0px)) calc(96px + env(safe-area-inset-bottom,0px)) max(14px,env(safe-area-inset-left,0px))}
+.md-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+.md-head h1{font-family:var(--font-display);font-size:26px;font-weight:600;color:var(--accent);margin:0}
+.md-nav{display:flex;align-items:center;gap:8px}
+.md-nav span{font-weight:600;min-width:128px;text-align:center}
+.md-nav .icon:disabled{opacity:.35}
+#moodBody{display:flex;flex-direction:column;gap:12px}
+.md-card{background:var(--surface);border-radius:14px;box-shadow:var(--shadow);padding:14px}
+.md-card h3{margin:0 0 6px;font-family:var(--font-display);font-size:18px}
+.md-today{display:flex;flex-direction:column;gap:10px}
+.md-today > b{font-size:16px}
+.md-today.done{flex-direction:row;align-items:center;gap:12px}
+.md-today.done > div{flex:1;min-width:0;display:flex;flex-direction:column}
+.md-today.done span{color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.md-link{color:var(--accent);font-weight:600;padding:6px 8px;border-radius:6px}
+.md-quick{display:flex;justify-content:space-between;gap:4px}
+.md-quick button{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;color:var(--muted);flex:1;padding:4px 0;border-radius:10px;transition:transform .12s}
+.md-quick button:active{transform:scale(.92)}
+.md-dows{display:grid;grid-template-columns:repeat(7,1fr);text-align:center;font-size:12px;color:var(--muted);margin-bottom:6px}
+.md-grid{display:grid;grid-template-columns:repeat(7,1fr);row-gap:8px}
+.md-day{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:13px;padding:2px 0;color:var(--fg)}
+.md-day .face{width:min(40px,10vw);height:min(40px,10vw)}
+.md-day .face.empty{color:var(--fg)}
+.md-day.other{opacity:.38}
+.md-day.future{opacity:.25;cursor:default}
+.md-day.today span{background:var(--accent);color:var(--on-accent);border-radius:10px;padding:0 7px;font-weight:600}
+.md-gauge{display:block;width:100%;max-width:340px;margin:4px auto 0}
+.md-total{font-size:34px;font-weight:600;fill:var(--fg)}
+.md-sub{font-size:9px;fill:var(--muted)}
+.md-legend{display:flex;justify-content:space-between;margin-top:10px}
+.md-legend > div{position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;font-size:12px;color:var(--muted)}
+.md-legend b{position:absolute;top:-6px;right:calc(50% - 26px);min-width:22px;height:22px;padding:0 5px;border-radius:11px;color:#1a1a1a;font-size:12px;display:grid;place-items:center;border:2px solid var(--surface)}
+.md-chart{display:block;width:100%}
+.md-gl{stroke:var(--border);stroke-width:1}
+.md-line{fill:none;stroke:var(--muted);stroke-width:2;stroke-linejoin:round;opacity:.6}
+.md-dot{stroke:var(--surface);stroke-width:1.5}
+.md-tick{font-size:10px;fill:var(--muted)}
+.md-stats{display:grid;grid-template-columns:repeat(3,1fr);text-align:center}
+.md-stats > div{display:flex;flex-direction:column;align-items:center;gap:2px}
+.md-stats b{font-size:20px}
+.md-stats span{font-size:12px;color:var(--muted)}
+.md-stats .md-big{font-size:26px;line-height:34px;color:inherit}
+.md-rem{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.md-rem select{border:1px solid var(--border);background:var(--bg);color:var(--fg);border-radius:8px;padding:6px 8px;font:inherit}
+.md-pick .sh-body{align-items:stretch}
+.md-q{text-align:center;font-family:var(--font-display);font-size:22px;margin:6px 0 4px}
+.md-faces{display:flex;justify-content:space-between;gap:4px}
+.md-faces button{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 0;border-radius:14px;font-size:13px;color:var(--muted);border:2px solid transparent;transition:transform .12s}
+.md-faces button.on{border-color:var(--c);background:color-mix(in srgb,var(--c) 14%,transparent);color:var(--fg);font-weight:600;transform:scale(1.04)}
+@media (max-width:380px){.md-faces .face{width:44px;height:44px}}

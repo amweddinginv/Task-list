@@ -1,5 +1,5 @@
 // Aboud's Tasks service worker: offline app shell + push notifications.
-const CACHE = 'aboud-tasks-v3';
+const CACHE = 'aboud-tasks-v4';
 const SHELL = ['/', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
@@ -43,11 +43,13 @@ self.addEventListener('notificationclick', e => {
   const url = new URL((e.notification.data && e.notification.data.url) || '/', self.location.origin);
   const task = url.searchParams.get('task');
   const event = url.searchParams.get('event');
+  const mood = url.searchParams.get('mood');
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
     for (const c of list) {
       if (new URL(c.url).origin === self.location.origin) {
         if (task) c.postMessage({ task });
         if (event) c.postMessage({ event });
+        if (mood) c.postMessage({ mood });
         return c.focus();
       }
     }

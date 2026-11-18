@@ -20,6 +20,23 @@ The sun button in the Tasks header turns on a daily forecast notification (defau
 - **Forecast:** comes from Open-Meteo (free, no key).
 - **Sending:** the `send-reminders` function sends the notification during the chosen hour, in your time zone, once a day.
 
+## Mood tracker
+
+The **Mood** tab logs one mood per day in `public.mood_entries`, with these columns:
+
+| column | meaning |
+|---|---|
+| `day` | The date. One row per day. |
+| `mood` | 5 = Great, 4 = Good, 3 = Okay, 2 = Bad, 1 = Awful |
+| `note` | Optional note. |
+
+- **Daily check-in:** at 9 pm local time (changeable in the tab, or off), a "How was your day?" notification is sent, but only if today isn't logged yet. Tapping it opens the mood picker. The settings live in `user_settings.mood_reminder_enabled` and `user_settings.mood_hour`.
+- **Logging with SQL:**
+  ```sql
+  insert into public.mood_entries (day, mood, note) values (current_date, 4, '')
+  on conflict (user_id, day) do update set mood = excluded.mood, note = excluded.note;
+  ```
+
 ## Run locally
 
 ```

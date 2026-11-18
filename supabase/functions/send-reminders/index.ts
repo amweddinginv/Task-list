@@ -135,7 +135,24 @@ async function sweep() {
       console.error("weather failed", (err as Error).message);
     }
   }
-  return { reminders, digests, weather };
+  // 4) Evening mood check-in (default 9 pm) if today isn't logged yet.
+  let mood = 0;
+  const { data: allSettings } = await sb.from("user_settings").select("user_id,tz,mood_reminder_enabled,mood_hour,mood_sent_on");
+  const setBy = new Map((allSettings ?? []).map((x) => [x.user_id, x]));
+  for (const [uid, us] of byUser) {
+    const st = setBy.get(uid);
+    if (st && st.mood_reminder_enabled === false) continue;
+    const tz = st?.tz || us[us.length - 1].tz || "America/Toronto";
+    const { date, hour } = localParts(tz);
+    if (hour !== (st?.mood_hour ?? 21) || st?.mood_sent_on === date) continue;
+    const { data: logged } = await sb.from("mood_entries").select("id").eq("user_id", uid).eq("day", date).maybeSingle();
+    if (!logged) {
+      await sendTo(us, { title: "How was your day?", body: "Tap to log your mood.", tag: "mood-" + date, url: `/?mood=${date}` });
+      mood++;
+    }
+    await sb.from("user_settings").upsert({ user_id: uid, mood_sent_on: date });
+  }
+  return { reminders, digests, weather, mood };
 }
 
 // ---------- weather (Open-Meteo, no key needed) ----------

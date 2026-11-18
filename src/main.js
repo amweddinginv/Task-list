@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_KEY, VAPID_PUBLIC_KEY, FILES_BUCKET } from './config.js';
 import { initCalendar } from './calendar.js';
+import { initMood } from './mood.js';
 
 const ICON = {
   check:'<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6.2l2.3 2.3 4.7-5"/></svg>',
@@ -847,14 +848,19 @@ function startData(){
 
 // ---------- tabs ----------
 const cal = initCalendar({ sb, $, esc, flash, info: (m) => info(m), getUser: () => user });
+const moodTab = initMood({ sb, $, esc, flash, getUser: () => user });
 let openEventId = new URLSearchParams(location.search).get('event');
+let openMoodDay = new URLSearchParams(location.search).get('mood');
 let tab = localStorage.getItem('tab') || 'tasks';
 if(openEventId) tab = 'cal';
+if(openMoodDay) tab = 'mood';
 function applyTab(){
   $('#app').hidden = tab !== 'tasks';
   $('#calView').hidden = tab !== 'cal';
+  $('#moodView').hidden = tab !== 'mood';
   document.querySelectorAll('#tabbar [data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
   if(tab === 'cal') cal.show(); else cal.hide();
+  if(tab === 'mood') moodTab.show(); else moodTab.hide();
 }
 function setTab(t){ tab = t; try{ localStorage.setItem('tab', t); }catch(e){} if(user) applyTab(); }
 $('#tabbar').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if(b) setTab(b.dataset.tab); });
@@ -923,13 +929,13 @@ $('#signOutBtn').addEventListener('click', async () => {
 function showSignedIn(u){
   const was = user && user.id;
   user = u;
-  if(recovering){ $('#auth').hidden = false; $('#app').hidden = true; $('#calView').hidden = true; $('#tabbar').hidden = true; return; }
+  if(recovering){ $('#auth').hidden = false; $('#app').hidden = true; $('#calView').hidden = true; $('#moodView').hidden = true; $('#tabbar').hidden = true; return; }
   $('#auth').hidden = !!u; $('#tabbar').hidden = !u;
-  if(u) applyTab(); else { $('#app').hidden = true; $('#calView').hidden = true; }
-  if(u && was !== u.id){ startData(); refreshBell(); loadSettings(); cal.start(); if(openEventId){ setTab('cal'); cal.openEvent(openEventId); openEventId = null; history.replaceState(null, '', '/'); } }
+  if(u) applyTab(); else { $('#app').hidden = true; $('#calView').hidden = true; $('#moodView').hidden = true; }
+  if(u && was !== u.id){ startData(); refreshBell(); loadSettings(); cal.start(); moodTab.start(); if(openMoodDay){ setTab('mood'); moodTab.open(openMoodDay); openMoodDay = null; history.replaceState(null, '', '/'); } if(openEventId){ setTab('cal'); cal.openEvent(openEventId); openEventId = null; history.replaceState(null, '', '/'); } }
   if(!u){
     if(channel){ sb.removeChannel(channel); channel = null; }
-    cal.stop();
+    cal.stop(); moodTab.stop();
     tasks = new Map(); selected = null; loaded = false;
     $('#loginForm').hidden = false; $('#newPassForm').hidden = true; $('#password').value = '';
   }
@@ -1101,6 +1107,7 @@ $('#bellBtn').addEventListener('click', async () => {
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('/sw.js').catch(()=>{});
   navigator.serviceWorker.addEventListener('message', e => {
+    if(e.data && e.data.mood){ setTab('mood'); moodTab.open(e.data.mood); return; }
     if(e.data && e.data.event){ setTab('cal'); cal.openEvent(e.data.event); return; }
     const id = e.data && e.data.task;
     if(id && tasks.has(id)){ selected = id; render(true); }

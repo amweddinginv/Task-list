@@ -90,11 +90,24 @@
   <div class="cal-body" id="calBody"></div>
   <button class="fab" id="calNew" type="button" aria-label="New event"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg></button>
 </section>
+<section class="mood" id="moodView" hidden aria-label="Mood">
+  <header class="md-head">
+    <h1>Mood</h1>
+    <div class="md-nav">
+      <button class="icon" id="moodPrev" type="button" aria-label="Previous month"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M10 3L5 8l5 5"/></svg></button>
+      <span id="moodMonth"></span>
+      <button class="icon" id="moodNext" type="button" aria-label="Next month"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 3l5 5-5 5"/></svg></button>
+    </div>
+  </header>
+  <div id="moodBody"></div>
+</section>
+<div class="sheet" id="moodSheet" hidden></div>
 <div class="sheet" id="evSheet" hidden></div>
 <div class="choice" id="calChoice" hidden></div>
 <nav class="tabbar" id="tabbar" hidden>
   <button type="button" data-tab="tasks"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7.5"/><path d="M6.8 10.2l2.2 2.2 4.3-4.6"/></svg><span>Tasks</span></button>
   <button type="button" data-tab="cal"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><rect x="2.5" y="3.5" width="15" height="14" rx="2"/><path d="M2.5 7.5h15M6.5 2v3M13.5 2v3" stroke-linecap="round"/><path d="M6 11h2M9 11h2M12 11h2M6 14h2M9 14h2" stroke-linecap="round"/></svg><span>Calendar</span></button>
+  <button type="button" data-tab="mood"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="10" cy="10" r="7.5"/><circle cx="7.3" cy="8.5" r=".6" fill="currentColor"/><circle cx="12.7" cy="8.5" r=".6" fill="currentColor"/><path d="M6.8 12q3.2 3 6.4 0"/></svg><span>Mood</span></button>
 </nav>
 <div class="saving" id="saving">Saved</div>
 <div class="toast" id="toast" hidden role="status"><span id="toastMsg"></span><button id="toastBtn" type="button">Undo</button><div class="bar" id="toastBar"></div></div>
