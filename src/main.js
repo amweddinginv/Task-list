@@ -846,6 +846,12 @@ function startData(){
   setTimeout(()=>{ if(!loaded) setStatus("Can't reach your saved tasks yet. They'll appear when the connection is back."); }, 10000);
 }
 
+// A notification can ask the app to open another app (fallback when the system can't open it directly).
+{
+  const go = new URLSearchParams(location.search).get('go');
+  if(go && /^https:\/\/maps\.apple\.com\//.test(go)){ history.replaceState(null, '', '/'); location.href = go; }
+}
+
 // ---------- tabs ----------
 const cal = initCalendar({ sb, $, esc, flash, info: (m) => info(m), getUser: () => user });
 const moodTab = initMood({ sb, $, esc, flash, getUser: () => user });

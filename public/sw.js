@@ -1,5 +1,5 @@
 // Aboud's Tasks service worker: offline app shell + push notifications.
-const CACHE = 'aboud-tasks-v4';
+const CACHE = 'aboud-tasks-v5';
 const SHELL = ['/', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
@@ -35,11 +35,17 @@ self.addEventListener('push', e => {
     tag: d.tag,
     icon: '/icons/icon-192.png',
     badge: '/icons/badge-96.png',
-    data: { url: d.url || '/' }
+    data: { url: d.url || '/', open: d.open || null }
   }));
 });
 self.addEventListener('notificationclick', e => {
   e.notification.close();
+  // Notifications that open another app (for example Apple Maps directions).
+  const ext = e.notification.data && e.notification.data.open;
+  if (ext) {
+    e.waitUntil(self.clients.openWindow(ext).catch(() => self.clients.openWindow('/?go=' + encodeURIComponent(ext))));
+    return;
+  }
   const url = new URL((e.notification.data && e.notification.data.url) || '/', self.location.origin);
   const task = url.searchParams.get('task');
   const event = url.searchParams.get('event');

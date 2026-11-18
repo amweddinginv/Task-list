@@ -37,6 +37,30 @@ The **Mood** tab logs one mood per day in `public.mood_entries`, with these colu
   on conflict (user_id, day) do update set mood = excluded.mood, note = excluded.note;
   ```
 
+## Routines (scheduled notifications)
+
+`public.routines` holds fixed-time notifications on chosen weekdays. When one is tapped, `open_url` opens, for example Apple Maps directions.
+
+| column | meaning |
+|---|---|
+| `title`, `body` | The notification text. |
+| `days` | Weekdays: 0 = Sunday … 6 = Saturday. |
+| `at_time` | Local time, such as `'08:30'`. |
+| `open_url` | The link opened when the notification is tapped. |
+| `enabled` | `false` turns the routine off. |
+
+The routine is sent once a day, within 15 minutes of `at_time`.
+
+```sql
+-- Pause / resume the McMaster commute reminder
+update public.routines set enabled = false where title like '%McMaster%';
+
+-- Add Friday too
+update public.routines set days = '{1,2,3,4,5}' where title like '%McMaster%';
+```
+
+Apple Maps links: `https://maps.apple.com/?daddr=<address>&dirflg=d`. `dirflg` is `d` for driving, `w` for walking or `r` for transit.
+
 ## Run locally
 
 ```

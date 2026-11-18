@@ -152,7 +152,27 @@ async function sweep() {
     }
     await sb.from("user_settings").upsert({ user_id: uid, mood_sent_on: date });
   }
-  return { reminders, digests, weather, mood };
+  // 5) Routines: fixed-time notifications on chosen weekdays (sent within 15 minutes of the time).
+  let routines = 0;
+  const { data: rts } = await sb.from("routines").select("*").eq("enabled", true);
+  for (const rt of rts ?? []) {
+    const us = byUser.get(rt.user_id) ?? [];
+    if (!us.length) continue;
+    const st = setBy.get(rt.user_id);
+    const tz = st?.tz || us[us.length - 1].tz || "America/Toronto";
+    const f = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", weekday: "short", hourCycle: "h23" }).formatToParts(now);
+    const g = (t: string) => f.find((p) => p.type === t)!.value;
+    const date = `${g("year")}-${g("month")}-${g("day")}`;
+    const dow = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(g("weekday"));
+    const mins = Number(g("hour")) * 60 + Number(g("minute"));
+    const [h, m] = String(rt.at_time).split(":").map(Number);
+    const due = h * 60 + m;
+    if (!(rt.days ?? []).includes(dow) || rt.last_sent_on === date || mins < due || mins > due + 15) continue;
+    await sendTo(us, { title: rt.title, body: rt.body, tag: "rt-" + rt.id, url: "/", open: rt.open_url || undefined });
+    await sb.from("routines").update({ last_sent_on: date }).eq("id", rt.id);
+    routines++;
+  }
+  return { reminders, digests, weather, mood, routines };
 }
 
 // ---------- weather (Open-Meteo, no key needed) ----------
