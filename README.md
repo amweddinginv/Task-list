@@ -105,3 +105,85 @@ These live in Supabase. The schema was applied as migration `tasks_schema`.
   - `claim_orphan_tasks` gives unowned rows to the owner
 - **Function:** `get_push_config()` reads the Vault secrets. Only the service role can call it.
 - **Cron job:** `send-reminders` runs every minute and posts to the Edge Function with the `x-cron-secret` header.
+
+## Calendar (Outlook sync) — for another Claude chat
+
+The **Calendar** tab shows `public.calendar_events`. The Edge Function `outlook-sync` keeps that table in two-way sync with the owner's Outlook (Microsoft 365) calendar about every minute. Changes made here reach Outlook within seconds: a database trigger starts a sync as soon as a row changes. Outlook sends the meeting invites, updates and cancellations from the owner's account.
+
+**To add, change or delete events, just change rows with SQL** on project **Tracker** (`qoizudddelbifkibcize`). Don't set `sync_state`, `outlook_id` or `remote` yourself; the triggers handle them.
+
+### Columns you can set
+
+| column | meaning |
+|---|---|
+| `subject` | Title. |
+| `start_at`, `end_at` | `timestamptz`. Always give the zone, such as `'2026-11-20 13:00 America/Toronto'`. |
+| `is_all_day` | `true` for all-day events. Then use local midnights: start = the day at 00:00 and end = the next day at 00:00 (in America/Toronto). |
+| `location` | Free text, such as `'Joey''s, 25 Main St'`. |
+| `attendees` | Invitees. Outlook emails them an invite. `[{"email":"sam@example.com","name":"Sam","type":"required"}]`. `type` is `required` or `optional`. `response` is filled in by sync (`accepted`, `declined`, `tentativelyAccepted`, `none`). |
+| `is_online_meeting` | `true` = add a Teams meeting link. The link appears in `online_url` after sync. |
+| `notes` | Plain-text description. |
+| `reminder_minutes` | Minutes before the start for the reminder. `null` = none. The app also sends a phone push at this time. |
+| `show_as` | `free`, `tentative`, `busy`, `oof` (away) or `workingElsewhere`. |
+| `categories` | Such as `'["Blue category"]'`. Presets: Red, Orange, Yellow, Green, Blue, Purple category. |
+| `sensitivity` | `normal` or `private`. |
+| `recurrence` | Repeating events, in the Microsoft Graph format: `{"pattern":{"type":"weekly","interval":1,"daysOfWeek":["tuesday"]},"range":{"type":"noEnd"}}`. Types: `daily`, `weekly` (with `daysOfWeek`), `absoluteMonthly` (with `dayOfMonth`), `absoluteYearly` (with `dayOfMonth` and `month`). For an end, use `"range":{"type":"endDate","endDate":"2027-03-01"}`. The range start date is taken from `start_at`. |
+
+### Columns filled in by sync (read only)
+
+| column | meaning |
+|---|---|
+| `outlook_id` | The event's ID in Outlook. |
+| `event_type` | `singleInstance`, `occurrence` (one date of a series), `exception` (a changed date of a series) or `seriesMaster` (the rule; hidden in the app). |
+| `series_master_id` | For an occurrence: the `outlook_id` of its series master. |
+| `organizer`, `is_organizer`, `response_status` | Who organized the event. For invites you received, `is_organizer = false`. |
+| `web_link` | The event's link in Outlook. |
+| `sync_state` | `synced`, `pending_create`, `pending_update`, `pending_delete` or `error`. |
+| `sync_error` | The error message if `sync_state = 'error'`. |
+
+### Examples
+
+```sql
+-- What's on this week
+select id, subject, start_at at time zone 'America/Toronto' as starts, location, sync_state
+from public.calendar_events
+where event_type <> 'seriesMaster' and start_at >= date_trunc('week', now()) and start_at < date_trunc('week', now()) + interval '7 days'
+order by start_at;
+
+-- Lunch Friday 1-2 pm at Joey's, invite Sam
+insert into public.calendar_events (subject, start_at, end_at, location, attendees)
+values ('Lunch with Sam', '2026-11-20 13:00 America/Toronto', '2026-11-20 14:00 America/Toronto', 'Joey''s',
+        '[{"email":"sam@example.com","name":"Sam","type":"required"}]');
+
+-- Teams meeting every Tuesday 10:00-10:30 until March
+insert into public.calendar_events (subject, start_at, end_at, is_online_meeting, attendees, recurrence)
+values ('Weekly sync', '2026-11-24 10:00 America/Toronto', '2026-11-24 10:30 America/Toronto', true,
+        '[{"email":"team@example.com","type":"required"}]',
+        '{"pattern":{"type":"weekly","interval":1,"daysOfWeek":["tuesday"]},"range":{"type":"endDate","endDate":"2027-03-31"}}');
+
+-- All-day event
+insert into public.calendar_events (subject, start_at, end_at, is_all_day, show_as)
+values ('Day off', '2026-11-27 00:00 America/Toronto', '2026-11-28 00:00 America/Toronto', true, 'oof');
+
+-- Move an event (attendees get an update)
+update public.calendar_events set start_at = start_at + interval '1 hour', end_at = end_at + interval '1 hour' where id = '…';
+
+-- Add a person to an existing meeting
+update public.calendar_events set attendees = attendees || '[{"email":"alex@example.com","type":"required"}]'::jsonb where id = '…';
+
+-- Cancel / delete an event (attendees get a cancellation). Use this UPDATE: it needs no delete confirmation.
+update public.calendar_events set sync_state = 'pending_delete' where id = '…';
+
+-- Delete a whole repeating series: mark its series master
+update public.calendar_events set sync_state = 'pending_delete'
+where outlook_id = (select series_master_id from public.calendar_events where id = '…');
+
+-- Change the whole series (time, title, attendees…): update the row with event_type = 'seriesMaster'
+-- Change only one date of a series: update that occurrence row
+```
+
+Notes:
+- Answering an invite (accept, tentative or decline) is done in the app's event view, or through the function: `POST outlook-sync {"action":"respond","id":"<row id>","response":"accept"}`.
+- The sync window is 90 days back to 400 days ahead.
+- If `sync_state = 'error'`, read `sync_error`. Fix the row, or set `sync_state = 'pending_retry'` to try again.
+- Times: the owner is in `America/Toronto`.

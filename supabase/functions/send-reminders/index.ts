@@ -1,5 +1,5 @@
 // Sends Web Push reminders for Aboud's Tasks.
-// Called every 5 minutes by pg_cron (header x-cron-secret), or by the app with
+// Called every minute by pg_cron (header x-cron-secret), or by the app with
 // the user's login token and {"test": true} to send a test notification.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
@@ -78,6 +78,27 @@ async function sweep() {
       reminders++;
     }
     await sb.from("tasks").update({ reminded_at: now.toISOString() }).eq("id", t.id);
+  }
+
+  // 1b) Calendar event reminders (reminder_minutes before the start).
+  const { data: evs } = await sb.from("calendar_events")
+    .select("id,user_id,subject,location,start_at,is_all_day,reminder_minutes,response_status")
+    .is("reminded_at", null).not("reminder_minutes", "is", null)
+    .eq("is_cancelled", false).neq("event_type", "seriesMaster").neq("sync_state", "pending_delete")
+    .gte("start_at", new Date(now.getTime() - 30 * 60000).toISOString())
+    .lte("start_at", new Date(now.getTime() + 8 * 86400000).toISOString());
+  for (const e of evs ?? []) {
+    const start = new Date(e.start_at).getTime();
+    if (start - e.reminder_minutes * 60000 > now.getTime()) continue;
+    if (e.response_status === "declined") continue;
+    const us = byUser.get(e.user_id) ?? [];
+    if (us.length) {
+      const mins = Math.round((start - now.getTime()) / 60000);
+      const when = e.is_all_day ? "Today" : mins <= 0 ? "Now" : mins < 60 ? `In ${mins} min` : `At ${new Date(start).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: us[us.length - 1].tz || "America/Toronto" })}`;
+      await sendTo(us, { title: e.subject || "Event", body: when + (e.location ? ` · ${e.location}` : ""), tag: "ev-" + e.id, url: `/?event=${e.id}` });
+      reminders++;
+    }
+    await sb.from("calendar_events").update({ reminded_at: now.toISOString(), touched_by: "sync" }).eq("id", e.id);
   }
 
   // 2) 9 am digest of tasks due today that have no reminder time.
