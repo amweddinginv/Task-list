@@ -1,5 +1,5 @@
 // Aboud's Tasks service worker: offline app shell + push notifications.
-const CACHE = 'aboud-tasks-v2';
+const CACHE = 'aboud-tasks-v3';
 const SHELL = ['/', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
