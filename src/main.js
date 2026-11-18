@@ -16,6 +16,8 @@ const ICON = {
   trash:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4"/></svg>',
   close:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>',
   back:'<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M9 2L4 7l5 5"/></svg>',
+  sun:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><circle cx="8" cy="8" r="3"/><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1"/></svg>',
+  sunOn:'<svg viewBox="0 0 16 16" fill="currentColor" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><circle cx="8" cy="8" r="3"/><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1" fill="none"/></svg>',
   bell:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11V7a4 4 0 018 0v4l1 1.5H3z"/><path d="M6.5 14a1.6 1.6 0 003 0"/></svg>',
   bellOn:'<svg viewBox="0 0 16 16" fill="currentColor" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11V7a4 4 0 018 0v4l1 1.5H3z"/><path d="M6.5 14a1.6 1.6 0 003 0" fill="none"/></svg>'
 };
@@ -833,7 +835,7 @@ function subscribe(){
       if(status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setTimeout(() => { if(user) subscribe(); }, 4000);
     });
 }
-document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible' && user){ refetch(); $('#today').textContent = new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'}); } });
+document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible' && user){ refetch(); if(settings && settings.weather_enabled) refreshLocation(false); $('#today').textContent = new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'}); } });
 window.addEventListener('online', () => { if(user) refetch(); });
 
 function startData(){
@@ -924,7 +926,7 @@ function showSignedIn(u){
   if(recovering){ $('#auth').hidden = false; $('#app').hidden = true; $('#calView').hidden = true; $('#tabbar').hidden = true; return; }
   $('#auth').hidden = !!u; $('#tabbar').hidden = !u;
   if(u) applyTab(); else { $('#app').hidden = true; $('#calView').hidden = true; }
-  if(u && was !== u.id){ startData(); refreshBell(); cal.start(); if(openEventId){ setTab('cal'); cal.openEvent(openEventId); openEventId = null; history.replaceState(null, '', '/'); } }
+  if(u && was !== u.id){ startData(); refreshBell(); loadSettings(); cal.start(); if(openEventId){ setTab('cal'); cal.openEvent(openEventId); openEventId = null; history.replaceState(null, '', '/'); } }
   if(!u){
     if(channel){ sb.removeChannel(channel); channel = null; }
     cal.stop();
@@ -941,6 +943,102 @@ sb.auth.onAuthStateChange((event, session) => {
   if(event === 'TOKEN_REFRESHED' && channel) sb.realtime.setAuth(session.access_token);
   // run outside the auth callback to avoid blocking supabase-js
   setTimeout(() => showSignedIn(session ? session.user : null), 0);
+});
+
+// ---------- morning weather ----------
+let settings = null;
+const localDate = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+const hourLabel = h => new Date(2000, 0, 1, h).toLocaleTimeString(undefined, {hour:'numeric'});
+function setSun(){
+  const on = !!(settings && settings.weather_enabled);
+  const b = $('#sunBtn');
+  b.innerHTML = on ? ICON.sunOn : ICON.sun;
+  b.classList.toggle('on', on);
+  b.setAttribute('aria-label', on ? `Morning weather is on (${hourLabel(settings.weather_hour)}${settings.place ? ', ' + settings.place : ''})` : 'Turn on morning weather');
+}
+async function loadSettings(){
+  const { data } = await sb.from('user_settings').select('*').maybeSingle();
+  settings = data; setSun();
+  if(settings && settings.weather_enabled) refreshLocation(false);
+}
+function position(){
+  return new Promise((resolve, reject) => {
+    if(!navigator.geolocation) return reject(new Error('unsupported'));
+    navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: false, timeout: 20000, maximumAge: 30 * 60000 });
+  });
+}
+const km = (a, b, c, d) => { const r = Math.PI / 180, x = (d - b) * r * Math.cos((a + c) / 2 * r), y = (c - a) * r; return Math.sqrt(x * x + y * y) * 6371; };
+async function placeName(lat, lon){
+  try {
+    const r = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`);
+    const j = await r.json();
+    return j.city || j.locality || j.principalSubdivision || '';
+  } catch(err){ return ''; }
+}
+// Keep the saved location current. Without `ask`, only runs when location is already allowed.
+async function refreshLocation(ask, extra = {}){
+  if(!ask){
+    try { const p = navigator.permissions && await navigator.permissions.query({ name: 'geolocation' }); if(!p || p.state !== 'granted') return; } catch(err){ return; }
+  }
+  const pos = await position();
+  const lat = Math.round(pos.coords.latitude * 100) / 100, lon = Math.round(pos.coords.longitude * 100) / 100; // about 1 km
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Toronto';
+  const moved = !settings || settings.lat == null || km(settings.lat, settings.lon, lat, lon) > 3 || settings.tz !== tz || !settings.place;
+  if(!moved && !Object.keys(extra).length) return;
+  const place = moved ? await placeName(lat, lon) : settings.place;
+  const row = { user_id: user.id, lat, lon, place, tz, location_updated_at: new Date().toISOString(), updated_at: new Date().toISOString(), ...extra };
+  const { data, error } = await sb.from('user_settings').upsert(row).select().single();
+  if(error) throw error;
+  settings = data; setSun();
+}
+function choose(question, options){
+  return new Promise(resolve => {
+    const el = $('#calChoice');
+    el.innerHTML = `<div class="ch-card"><p>${esc(question)}</p>${options.map((o, i) => `<button data-i="${i}" class="${o.danger ? 'danger' : ''}">${esc(o.label)}</button>`).join('')}<button data-i="-1" class="cancel">Cancel</button></div>`;
+    el.hidden = false;
+    el.onclick = e => {
+      const b = e.target.closest('[data-i]'); if(!b && e.target !== el) return;
+      const i = b ? +b.dataset.i : -1;
+      el.hidden = true; el.innerHTML = '';
+      resolve(i >= 0 ? options[i].value : null);
+    };
+  });
+}
+async function sendWeatherNow(){
+  const { data, error } = await sb.functions.invoke('send-reminders', { body: { weather: true } });
+  if(error || !data) { flash('Could not get the weather right now'); return; }
+  if(!data.sent) info(`${data.title}\n${data.body}`, 12000); else flash("Sent today's weather");
+}
+$('#sunBtn').addEventListener('click', async () => {
+  if(!settings || !settings.weather_enabled){
+    try {
+      const hr = (settings && settings.weather_hour) || 7, now = new Date();
+      // We send today's forecast right away, so skip today's scheduled one if its time has already come.
+      await refreshLocation(true, { weather_enabled: true, weather_hour: hr, weather_sent_on: now.getHours() >= hr ? localDate(now) : null });
+      flash(`Morning weather on: ${hourLabel(settings.weather_hour)}${settings.place ? ' for ' + settings.place : ''}`);
+      if(pushOn) sendWeatherNow();
+      else info(`Morning weather is on for ${hourLabel(settings.weather_hour)}. Tap the bell too, so the notification can reach you.`);
+    } catch(err){
+      console.error(err);
+      info(err && err.code === 1
+        ? 'Location is blocked. On iPhone: Settings > Privacy & Security > Location Services > Safari Websites > While Using the App. Then tap the sun again.'
+        : 'Could not get your location. Try again in a moment.');
+    }
+    return;
+  }
+  const pick = await choose(`Morning weather at ${hourLabel(settings.weather_hour)}${settings.place ? ' for ' + settings.place : ''}`, [
+    { label: "Send today's weather now", value: 'now' },
+    { label: 'Update my location', value: 'loc' },
+    { label: 'Change the time', value: 'time' },
+    { label: 'Turn off morning weather', value: 'off', danger: true },
+  ]);
+  if(pick === 'now') sendWeatherNow();
+  if(pick === 'loc'){ try { if(settings) settings.place = null; await refreshLocation(true, {}); flash('Location: ' + (settings.place || 'updated')); } catch(err){ flash('Could not get your location'); } }
+  if(pick === 'time'){
+    const h = await choose('Send the weather at', [5, 6, 7, 8, 9, 10].map(h => ({ label: hourLabel(h), value: h })));
+    if(h != null){ const { data } = await sb.from('user_settings').update({ weather_hour: h, weather_sent_on: new Date().getHours() >= h ? localDate(new Date()) : null }).eq('user_id', user.id).select().single(); if(data){ settings = data; setSun(); flash('Weather at ' + hourLabel(h)); } }
+  }
+  if(pick === 'off'){ const { data } = await sb.from('user_settings').update({ weather_enabled: false }).eq('user_id', user.id).select().single(); if(data){ settings = data; setSun(); flash('Morning weather off'); } }
 });
 
 // ---------- push notifications ----------

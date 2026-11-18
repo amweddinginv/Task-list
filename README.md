@@ -11,6 +11,15 @@ A one-list to-do app in the Microsoft To Do style. It's an installable web app (
 
   The VAPID keys and the cron secret are kept in Supabase Vault.
 
+## Morning weather
+
+The sun button in the Tasks header turns on a daily forecast notification (default 7 am, changeable to 5–10 am).
+
+- **Location:** the app saves your location, rounded to about 1 km, in `public.user_settings`. It refreshes the location each time the app is opened, if location access is allowed.
+- **Place name:** comes from BigDataCloud's free reverse-geocoding service.
+- **Forecast:** comes from Open-Meteo (free, no key).
+- **Sending:** the `send-reminders` function sends the notification during the chosen hour, in your time zone, once a day.
+
 ## Run locally
 
 ```

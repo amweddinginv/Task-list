@@ -118,7 +118,68 @@ async function sweep() {
     await sb.from("tasks").update({ due_notified: date }).in("id", fresh.map((t) => t.id));
     digests++;
   }
-  return { reminders, digests };
+  // 3) Morning weather at the chosen hour (default 7 am) in the user's time zone.
+  let weather = 0;
+  const { data: settings } = await sb.from("user_settings").select("*").eq("weather_enabled", true).not("lat", "is", null);
+  for (const st of settings ?? []) {
+    const us = byUser.get(st.user_id) ?? [];
+    if (!us.length) continue;
+    const { date, hour } = localParts(st.tz || "America/Toronto");
+    if (hour !== (st.weather_hour ?? 7) || st.weather_sent_on === date) continue;
+    try {
+      const msg = await weatherMessage(st.lat, st.lon, st.place);
+      await sendTo(us, { ...msg, tag: "weather-" + date, url: "/" });
+      await sb.from("user_settings").update({ weather_sent_on: date }).eq("user_id", st.user_id);
+      weather++;
+    } catch (err) {
+      console.error("weather failed", (err as Error).message);
+    }
+  }
+  return { reminders, digests, weather };
+}
+
+// ---------- weather (Open-Meteo, no key needed) ----------
+const WMO: Record<number, [string, string]> = {
+  0: ["Clear", "☀️"], 1: ["Mostly clear", "🌤️"], 2: ["Partly cloudy", "⛅"], 3: ["Cloudy", "☁️"],
+  45: ["Fog", "🌫️"], 48: ["Freezing fog", "🌫️"],
+  51: ["Light drizzle", "🌦️"], 53: ["Drizzle", "🌦️"], 55: ["Heavy drizzle", "🌧️"], 56: ["Freezing drizzle", "🌧️"], 57: ["Freezing drizzle", "🌧️"],
+  61: ["Light rain", "🌦️"], 63: ["Rain", "🌧️"], 65: ["Heavy rain", "🌧️"], 66: ["Freezing rain", "🌧️"], 67: ["Freezing rain", "🌧️"],
+  71: ["Light snow", "🌨️"], 73: ["Snow", "🌨️"], 75: ["Heavy snow", "❄️"], 77: ["Snow grains", "🌨️"],
+  80: ["Light showers", "🌦️"], 81: ["Showers", "🌧️"], 82: ["Heavy showers", "⛈️"], 85: ["Snow showers", "🌨️"], 86: ["Heavy snow showers", "❄️"],
+  95: ["Thunderstorms", "⛈️"], 96: ["Thunderstorms with hail", "⛈️"], 99: ["Thunderstorms with hail", "⛈️"],
+};
+async function weatherMessage(lat: number, lon: number, place?: string | null) {
+  const q = new URLSearchParams({
+    latitude: String(lat), longitude: String(lon), timezone: "auto", forecast_days: "1",
+    current: "temperature_2m,apparent_temperature,weather_code",
+    daily: "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max,uv_index_max",
+    hourly: "precipitation_probability,weather_code",
+  });
+  const res = await fetch("https://api.open-meteo.com/v1/forecast?" + q);
+  if (!res.ok) throw new Error("weather service " + res.status);
+  const w = await res.json();
+  const d = w.daily, c = w.current;
+  const [label, icon] = WMO[d.weather_code[0]] ?? ["", "🌡️"];
+  const r = (n: number) => Math.round(n);
+  const hi = r(d.temperature_2m_max[0]), lo = r(d.temperature_2m_min[0]);
+  const parts: string[] = [];
+  parts.push(`${label}. Now ${r(c.temperature_2m)}°, feels like ${r(c.apparent_temperature)}°.`);
+  const pop = d.precipitation_probability_max[0];
+  if (pop >= 30) {
+    const nowHour = Number(String(c.time).slice(11, 13));
+    const idx = (w.hourly.precipitation_probability as number[]).findIndex((p, i) => p >= 50 && Number(String(w.hourly.time[i]).slice(11, 13)) >= nowHour);
+    const snowy = [71, 73, 75, 77, 85, 86].includes(d.weather_code[0]);
+    const what = snowy ? "Snow" : "Rain";
+    if (idx >= 0) {
+      const h = Number(String(w.hourly.time[idx]).slice(11, 13));
+      parts.push(`${what} likely from ${h === 0 ? 12 : h > 12 ? h - 12 : h} ${h < 12 ? "AM" : "PM"} (${pop}%).`);
+    } else parts.push(`${pop}% chance of ${what.toLowerCase()}.`);
+  }
+  const wind = r(d.wind_speed_10m_max[0]);
+  if (wind >= 25) parts.push(`Wind up to ${wind} km/h.`);
+  const uv = d.uv_index_max?.[0];
+  if (uv >= 6) parts.push(`High UV (${r(uv)}), wear sunscreen.`);
+  return { title: `${icon} ${place ? place + ": " : ""}${hi}° / ${lo}°`, body: parts.join(" ") };
 }
 
 Deno.serve(async (req) => {
@@ -126,12 +187,21 @@ Deno.serve(async (req) => {
   try {
     await setup();
     if (req.headers.get("x-cron-secret") === cronSecret && cronSecret) return json(await sweep());
+    const body = await req.json().catch(() => ({}));
 
     // Test notification for the signed-in user.
     const token = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
     const { data: { user } } = await sb.auth.getUser(token);
     if (!user) return json({ error: "unauthorized" }, 401);
     const { data: subs } = await sb.from("push_subscriptions").select("*").eq("user_id", user.id);
+    if (body.weather) {
+      // Send today's weather now (used when turning the feature on).
+      const { data: st } = await sb.from("user_settings").select("*").eq("user_id", user.id).maybeSingle();
+      if (!st || st.lat == null) return json({ error: "No location saved yet" }, 400);
+      const msg = await weatherMessage(st.lat, st.lon, st.place);
+      const sent = await sendTo((subs ?? []) as Sub[], { ...msg, tag: "weather-test", url: "/" });
+      return json({ sent, ...msg });
+    }
     const sent = await sendTo((subs ?? []) as Sub[], { title: "Notifications are on", body: "You'll get your task reminders here.", tag: "test", url: "/" });
     return json({ sent });
   } catch (err) {
