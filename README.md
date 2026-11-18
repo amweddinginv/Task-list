@@ -37,6 +37,15 @@ The **Mood** tab logs one mood per day in `public.mood_entries`, with these colu
   on conflict (user_id, day) do update set mood = excluded.mood, note = excluded.note;
   ```
 
+## Horoscope
+
+The top of the **Mood** tab shows the Capricorn horoscope from Astrology.com.
+
+- **Periods:** Yesterday, Today, Tomorrow, This week and Next week, with a link to the original page.
+- **Fetching:** the Edge Function `horoscope` reads the pages and caches each one for 2 hours in `public.horoscope_cache`.
+- **Other signs:** pass a different sign in the request body: `{"sign":"leo"}`.
+- **Scope:** for personal use only.
+
 ## Routines (scheduled notifications)
 
 `public.routines` holds fixed-time notifications on chosen weekdays. When one is tapped, `open_url` opens, for example Apple Maps directions.

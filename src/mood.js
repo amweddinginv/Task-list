@@ -36,6 +36,40 @@ export function initMood({ sb, $, esc, flash, getUser }) {
   let month = firstOfMonth(new Date());
   let settings = null;
   let picking = null; // { day, mood, note }
+  // Horoscope card (from Astrology.com via the horoscope function)
+  const HS = [['yesterday', 'Yesterday'], ['today', 'Today'], ['tomorrow', 'Tomorrow'], ['week', 'This week'], ['nextweek', 'Next week']];
+  let hs = null, hsAt = 0, hsBusy = false;
+  let hsPeriod = 'today', hsOpen = true;
+  try { hsOpen = localStorage.getItem('hsOpen') !== '0'; } catch (e) { /* default */ }
+  async function loadHoroscope(force) {
+    if (hsBusy || (!force && hs && Date.now() - hsAt < 3600000)) return;
+    hsBusy = true;
+    try {
+      const { data, error } = await sb.functions.invoke('horoscope', { body: { sign: 'capricorn' } });
+      if (!error && data && !data.error) { hs = data; hsAt = Date.now(); }
+    } finally { hsBusy = false; }
+    renderHoroscope();
+  }
+  function horoscopeHTML() {
+    const cur = hs && hs[hsPeriod];
+    const paras = cur && cur.text ? cur.text.split(/\n{2,}/).map(t => `<p>${esc(t)}</p>`).join('') : '';
+    const first = cur && cur.text ? esc(cur.text.split(/(?<=[.!?])\s/)[0]) : '';
+    return `<div class="md-card hs ${hsOpen ? 'open' : ''}" id="hsCard">
+      <button class="hs-head" data-hs="toggle" aria-expanded="${hsOpen}">
+        <span class="hs-sign" aria-hidden="true">♑</span>
+        <span class="hs-title"><b>Capricorn</b><small>${cur && cur.date ? esc(cur.date) : hs ? '' : 'Loading your horoscope…'}</small></span>
+        <svg class="hs-chev" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 4.5l3 3 3-3"/></svg>
+      </button>
+      ${hsOpen ? `<div class="seg hs-tabs">${HS.map(([v, l]) => `<button data-hsp="${v}" class="${hsPeriod === v ? 'on' : ''}">${l}</button>`).join('')}</div>
+        <div class="hs-text">${paras || (hs ? `<p class="note">${cur && cur.error ? "Couldn't load this one right now." : 'Nothing here yet.'}</p>` : '<p class="note">Loading…</p>')}</div>
+        ${cur && cur.url ? `<a class="hs-src" href="${esc(cur.url)}" target="_blank" rel="noopener">Read on Astrology.com</a>` : ''}`
+      : (first ? `<p class="hs-peek">${first}</p>` : '')}
+    </div>`;
+  }
+  function renderHoroscope() {
+    const el = document.getElementById('hsCard');
+    if (el) el.outerHTML = horoscopeHTML();
+  }
 
   const pad = n => String(n).padStart(2, '0');
   const key = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
@@ -91,7 +125,7 @@ export function initMood({ sb, $, esc, flash, getUser }) {
     if (!visible) return;
     if (!loaded) { $('#moodBody').innerHTML = '<div class="state"><strong>Loading…</strong></div>'; return; }
     const list = monthEntries();
-    $('#moodBody').innerHTML = todayCard() + calendarCard() + countCard(list) + chartCard(list) + statsCard(list) + reminderCard();
+    $('#moodBody').innerHTML = horoscopeHTML() + todayCard() + calendarCard() + countCard(list) + chartCard(list) + statsCard(list) + reminderCard();
   }
   function todayCard() {
     const t = entries.get(todayKey());
@@ -185,6 +219,9 @@ export function initMood({ sb, $, esc, flash, getUser }) {
   $('#moodPrev').addEventListener('click', () => { month = new Date(month.getFullYear(), month.getMonth() - 1, 1); render(); });
   $('#moodNext').addEventListener('click', () => { if (firstOfMonth(new Date()) > month) { month = new Date(month.getFullYear(), month.getMonth() + 1, 1); render(); } });
   $('#moodBody').addEventListener('click', e => {
+    const hp = e.target.closest('[data-hsp]');
+    if (hp) { hsPeriod = hp.dataset.hsp; renderHoroscope(); return; }
+    if (e.target.closest('[data-hs="toggle"]')) { hsOpen = !hsOpen; try { localStorage.setItem('hsOpen', hsOpen ? '1' : '0'); } catch (err) { /* ignore */ } renderHoroscope(); return; }
     const q = e.target.closest('[data-quick]');
     if (q) { save(todayKey(), Number(q.dataset.quick), ''); return; }
     const d = e.target.closest('[data-day]');
@@ -223,10 +260,10 @@ export function initMood({ sb, $, esc, flash, getUser }) {
     }
   });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && picking) closePicker(); });
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && visible) renderBody(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && visible) { renderBody(); loadHoroscope(); } });
 
   return {
-    show() { visible = true; render(); if (!loaded) load(); },
+    show() { visible = true; render(); if (!loaded) load(); loadHoroscope(); },
     hide() { visible = false; },
     start() { loaded = false; entries = new Map(); load(); subscribe(); loadSettings(); },
     stop() { if (channel) sb.removeChannel(channel); channel = null; entries = new Map(); loaded = false; closePicker(); },
