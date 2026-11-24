@@ -572,3 +572,9 @@ input:disabled,select:disabled,textarea:disabled{opacity:.55}
 .pj-strip.compact .pj-card .pj-status,.pj-strip.compact .pj-card .pj-bar,.pj-strip.compact .pj-card small{display:none}
 .pj-strip.compact .pj-card .pj-name{font-size:13px}
 @media (max-width:560px){.pj-card{width:150px}}
+
+/* task details: keep the footer above the bottom tab bar on computers, clear delete button */
+@media (min-width:901px){.panel{height:calc(100dvh - 58px - env(safe-area-inset-bottom,0px))}}
+.p-foot .del-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:6px;color:var(--high);font-weight:600;font-size:13px;border:1px solid color-mix(in srgb,var(--high) 40%,transparent)}
+.p-foot .del-btn:hover{background:var(--high-soft)}
+.p-foot .del-btn svg{width:15px;height:15px}

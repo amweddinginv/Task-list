@@ -384,7 +384,7 @@ function renderPanel(force){
     <div class="p-foot">
       <button class="icon-btn" data-act="close" aria-label="Close details">${ICON.close}</button>
       <span>${created ? 'Created '+esc(created) : ''}${t.done && t.completedAt ? ' · Completed '+esc(new Date(t.completedAt).toLocaleDateString(undefined,{month:'short',day:'numeric'})) : ''}</span>
-      <button class="icon-btn" data-act="del" aria-label="Delete task">${ICON.trash}</button>
+      <button class="del-btn" data-act="del">${ICON.trash}<span>Delete task</span></button>
     </div>`;
   autosize($('#pTitle'));
   ensureUrls(files.filter(f=>IMG.test(f.type||'')).map(f=>f.id));
