@@ -165,6 +165,39 @@ These live in Supabase. The schema was applied as migration `tasks_schema`.
 - **Function:** `get_push_config()` reads the Vault secrets. Only the service role can call it.
 - **Cron job:** `send-reminders` runs every minute and posts to the Edge Function with the `x-cron-secret` header.
 
+## Projects
+
+Projects appear as cards at the top of the Tasks tab, each with a progress bar and a status. Tapping a card filters the list to that project. The **Overview** card shows a Monday-style board of every project.
+
+The projects live in `public.projects`:
+
+| column | meaning |
+|---|---|
+| `name` | The project name. |
+| `color` | Hex colour, such as `#00a86b`. |
+| `status` | `not_started`, `working`, `stuck` or `done`. |
+| `order` | Position of the card. Smaller is further left. |
+| `archived` | `true` hides the project. |
+
+A task belongs to a project through `tasks.project_id`. `null` means no project.
+
+```sql
+-- Add a task to the Lending Library project
+insert into public.tasks (title, project_id)
+values ('Print library cards', (select id from public.projects where name = 'Lending Library'));
+
+-- Move a task into a project
+update public.tasks set project_id = (select id from public.projects where name = 'Live') where id = '…';
+
+-- New project / set status
+insert into public.projects (name, color, "order") values ('Garage', '#a25ddc', 4000);
+update public.projects set status = 'stuck' where name = 'Live';
+
+-- Progress per project
+select p.name, count(t.*) filter (where t.done) as done, count(t.*) as total
+from public.projects p left join public.tasks t on t.project_id = p.id group by p.name, p."order" order by p."order";
+```
+
 ## Calendar (Outlook sync) — for another Claude chat
 
 The **Calendar** tab shows `public.calendar_events`. The Edge Function `outlook-sync` keeps that table in two-way sync with the owner's Outlook (Microsoft 365) calendar about every minute. Changes made here reach Outlook within seconds: a database trigger starts a sync as soon as a row changes. Outlook sends the meeting invites, updates and cancellations from the owner's account.

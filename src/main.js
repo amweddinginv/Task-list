@@ -34,10 +34,10 @@ $('#today').textContent = new Date().toLocaleDateString(undefined,{weekday:'long
 const fromRow = r => ({
   id: r.id, title: r.title, important: !!r.important, priority: r.priority || 'normal', done: !!r.done,
   completedAt: r.completed_at ?? null, created: r.created, order: r.order, due: r.due ?? null, repeat: r.repeat ?? null,
-  reminderAt: r.reminder_at ?? null, remindedAt: r.reminded_at ?? null,
+  reminderAt: r.reminder_at ?? null, remindedAt: r.reminded_at ?? null, projectId: r.project_id ?? null,
   notes: r.notes || '', steps: arr(r.steps), links: arr(r.links), files: arr(r.files)
 });
-const KEYMAP = { completedAt:'completed_at', reminderAt:'reminder_at', remindedAt:'reminded_at' };
+const KEYMAP = { completedAt:'completed_at', reminderAt:'reminder_at', remindedAt:'reminded_at', projectId:'project_id' };
 const toRow = f => { const o = {}; for(const [k,v] of Object.entries(f)){ if(k==='id') continue; o[KEYMAP[k]||k] = v; } return o; };
 const must = ({error}) => { if(error) throw error; };
 const col = {
@@ -191,8 +191,13 @@ function matches(t){
   const hay = [t.title, t.notes, ...arr(t.steps).map(s=>s.title), ...arr(t.links).map(l=>l.label+' '+l.url), ...arr(t.files).map(f=>f.name)].join(' ').toLowerCase();
   return hay.includes(q);
 }
+function inProject(t){
+  if(curProject === 'all' || curProject === 'board') return true;
+  if(curProject === 'none') return !t.projectId || !projects.has(t.projectId);
+  return t.projectId === curProject;
+}
 function sorted(done){
-  return [...tasks.values()].filter(t=>!!t.done===done && matches(t)).sort((a,b)=>{
+  return [...tasks.values()].filter(t=>!!t.done===done && matches(t) && inProject(t)).sort((a,b)=>{
     if(done) return (b.completedAt||0)-(a.completedAt||0);
     return ord(a)-ord(b);
   });
@@ -228,6 +233,8 @@ function rowHTML(t){
   if(t.due && !t.done) meta.push(`<span class="${dueCls(t)}">${t.reminderAt ? ICON.bell : ICON.cal}${isOver(t)?'Overdue, ':''}${esc(dueLabel(t))}</span>`);
   else if(t.reminderAt && !t.done) meta.push(`<span class="bell" title="Reminder">${ICON.bell}${esc(remindText(t.reminderAt))}</span>`);
   if(t.repeat) meta.push(`<span title="Repeats ${esc(repeatName(t.repeat).toLowerCase())}">${ICON.repeat}</span>`);
+  const pj = curProject === 'all' && t.projectId && projects.get(t.projectId);
+  if(pj) meta.push(`<span class="pj-chip" style="--pc:${esc(pj.color)}">${esc(pj.name)}</span>`);
   if(steps.length) meta.push(`<span>${steps.filter(s=>s.done).length} of ${steps.length}</span>`);
   if(p==='low' && !t.done) meta.push(`<span class="chip low">Low priority</span>`);
   if(t.notes && String(t.notes).trim()) meta.push(`<span title="Has notes">${ICON.note}Note</span>`);
@@ -243,8 +250,18 @@ function rowHTML(t){
 }
 function renderList(){
   if(drag && drag.active) return;
+  renderProjects();
+  const boardMode = curProject === 'board';
+  $('#board').hidden = !boardMode;
+  $('#addForm').hidden = boardMode;
+  $('#list').hidden = boardMode;
+  if(boardMode){ $('#doneToggle').hidden = true; $('#doneList').hidden = true; $('#board').innerHTML = boardHTML(); return; }
   const open = sorted(false), done = sorted(true);
   const list = $('#list');
+  if(!query && curProject !== 'all' && !open.length && !done.length){
+    list.innerHTML = `<div class="state"><strong>No tasks here yet</strong>Add one above and it goes into this project.</div>`;
+    $('#doneToggle').hidden = true; $('#doneList').hidden = true; return;
+  }
   if(query && !open.length && !done.length){
     list.innerHTML = `<div class="state"><strong>No matches</strong>Nothing found for "${esc(query)}".</div>`;
   } else if(!tasks.size){
@@ -313,6 +330,14 @@ function renderPanel(force){
         ${t.due ? `<div class="due-now ${isOver(t)?'over':(dn===0?'today':'')}">${isOver(t)?'Overdue, due ':'Due '}${esc(dueLabel(t))}${t.reminderAt ? `<span class="notif">${t.remindedAt ? '· notified' : '· notification on'}</span>` : ''}<button class="x" data-act="due-clear" aria-label="Remove due date">${ICON.x}</button></div>` : ''}
         <div class="row-label">${ICON.repeat}REPEAT</div>
         <div class="seg">${REPEATS.map(([v,l])=>`<button data-act="repeat" data-v="${v}" class="${(t.repeat||'')===v?'on':''}">${l}</button>`).join('')}</div>
+      </div>
+
+      <div class="card">
+        <div class="row-label">PROJECT</div>
+        <div class="seg pj-seg">
+          <button data-act="pj" data-v="" class="${!t.projectId || !projects.has(t.projectId) ? 'on' : ''}">None</button>
+          ${sortedProjects().map(pj => `<button data-act="pj" data-v="${esc(pj.id)}" class="${t.projectId === pj.id ? 'on' : ''}" style="--pc:${esc(pj.color)}"><span class="dot" style="background:${esc(pj.color)}"></span>${esc(pj.name)}</button>`).join('')}
+        </div>
       </div>
 
       <div class="card">
@@ -401,7 +426,7 @@ function complete(id){
       title: t.title, important: !!t.important, priority: t.priority || 'normal', done: false,
       notes: t.notes || '', steps: arr(t.steps).map(s=>({...s, done:false})), links: arr(t.links).map(l=>({...l})),
       files: arr(t.files).map(f=>({...f})), created: Date.now(), completedAt: null,
-      order: ord(t), due: next, repeat: rep, reminderAt
+      order: ord(t), due: next, repeat: rep, reminderAt, projectId: t.projectId || null
     });
     if(selected === id) selected = nid;
     flash('Next one due ' + dueText(nextDue(t.due, rep)));
@@ -543,7 +568,7 @@ $('#addForm').addEventListener('submit', e => {
   const v = $('#addInput').value.trim(); if(!v || !col) return;
   if(!canWrite){ setStatus('This list is read-only for you.'); return; }
   $('#addInput').value=''; $('#addGo').hidden = true;
-  createTask(newId(), {title:v, important:false, priority:'normal', done:false, notes:'', steps:[], links:[], files:[], created:Date.now(), completedAt:null, order: edgeOrder(1)});
+  createTask(newId(), {title:v, important:false, priority:'normal', done:false, notes:'', steps:[], links:[], files:[], created:Date.now(), completedAt:null, order: edgeOrder(1), projectId: projects.has(curProject) ? curProject : null});
 });
 
 // ---------- search ----------
@@ -600,6 +625,7 @@ panel.addEventListener('click', e => {
       if(v==='nextweek') d = addDays(base, ((8 - base.getDay()) % 7) || 7);
       patch(id, dueFields(t, ymd(d))); renderPanel(true); break;
     }
+    case 'pj': patch(id, {projectId: b.dataset.v || null}); renderPanel(true); break;
     case 'due-clear': patch(id, dueFields(t, null)); renderPanel(true); break;
     case 'time-clear': e.preventDefault(); patch(id, {reminderAt:null, remindedAt:null}); renderPanel(true); break;
     case 'repeat': {
@@ -799,12 +825,160 @@ document.addEventListener('pointercancel', endDrag);
 function setStatus(s){ $('#status').textContent = s || ''; }
 $('#list').innerHTML = `<div class="state"><strong>Loading your tasks…</strong></div>`;
 
+// ---------- projects (Monday-style) ----------
+let projects = new Map();
+let curProject = 'all';
+try { curProject = localStorage.getItem('project') || 'all'; } catch(e){}
+const PJ_COLORS = ['#00a86b', '#2564cf', '#e2445c', '#fdab3d', '#a25ddc', '#ff7575', '#579bfc', '#037f4c', '#ff642e', '#9d50dd'];
+const PJ_STATUS = { not_started: ['Not started', '#c4c4c4'], working: ['Working on it', '#fdab3d'], stuck: ['Stuck', '#e2445c'], done: ['Done', '#00c875'] };
+const sortedProjects = () => [...projects.values()].sort((a, b) => a.order - b.order || String(a.created_at).localeCompare(String(b.created_at)));
+function pjStats(id){
+  const list = [...tasks.values()].filter(t => id === 'none' ? (!t.projectId || !projects.has(t.projectId)) : id === 'all' ? true : t.projectId === id);
+  const done = list.filter(t => t.done).length;
+  return { total: list.length, done, open: list.length - done, pct: list.length ? Math.round(done / list.length * 100) : 0,
+    over: list.filter(t => !t.done && t.due && dayDiff(t.due) < 0).length };
+}
+function setProject(v){
+  curProject = v; openSwipe = null;
+  try { localStorage.setItem('project', v); } catch(e){}
+  render();
+}
+function statusPill(st){ const [l, c] = PJ_STATUS[st] || PJ_STATUS.working; return `<span class="pj-status" style="background:${c}">${l}</span>`; }
+function renderProjects(){
+  const all = pjStats('all');
+  const cards = sortedProjects().map(pj => {
+    const s = pjStats(pj.id);
+    return `<button class="pj-card ${curProject === pj.id ? 'on' : ''}" data-pj="${esc(pj.id)}" style="--pc:${esc(pj.color)}">
+      <span class="pj-name">${esc(pj.name)}</span>
+      ${statusPill(pj.status)}
+      <span class="pj-bar"><i style="width:${s.pct}%"></i></span>
+      <small>${s.total ? `${s.done} of ${s.total} done · ${s.pct}%` : 'No tasks yet'}${s.over ? ` · <em>${s.over} overdue</em>` : ''}</small>
+    </button>`;
+  }).join('');
+  $('#projects').innerHTML = `
+    <button class="pj-card pj-all ${curProject === 'all' ? 'on' : ''}" data-pj="all"><span class="pj-name">All tasks</span><small>${all.open} open</small></button>
+    <button class="pj-card pj-all ${curProject === 'board' ? 'on' : ''}" data-pj="board"><span class="pj-name">▦ Overview</span><small>Every project</small></button>
+    ${cards}
+    <button class="pj-card pj-new" data-pj="new"><span class="pj-name">+ New project</span></button>`;
+  const pj = projects.get(curProject);
+  if(pj){
+    const s = pjStats(pj.id);
+    $('#pjHead').innerHTML = `<div class="pj-head" style="--pc:${esc(pj.color)}">
+      <div class="pj-head-top"><span class="pj-dot"></span><b>${esc(pj.name)}</b>${statusPill(pj.status)}<button class="pj-more" data-pjact="menu" aria-label="Project options">⋯</button></div>
+      <span class="pj-bar big"><i style="width:${s.pct}%"></i></span>
+      <small>${s.done} of ${s.total} tasks done · ${s.pct}%${s.over ? ` · <em>${s.over} overdue</em>` : ''}</small>
+    </div>`;
+  } else if(curProject === 'none'){
+    const s = pjStats('none');
+    $('#pjHead').innerHTML = `<div class="pj-head" style="--pc:#8a8886"><div class="pj-head-top"><span class="pj-dot"></span><b>No project</b></div><small>${s.open} open · tasks not in any project</small></div>`;
+  } else $('#pjHead').innerHTML = '';
+}
+function boardRowHTML(t){
+  let st = ['To do', '#c4c4c4'];
+  if(t.done) st = ['Done', '#00c875'];
+  else if(t.due && isOver(t)) st = ['Overdue', '#e2445c'];
+  else if(t.due && dayDiff(t.due) === 0) st = ['Due today', '#579bfc'];
+  else if(arr(t.steps).some(x => x.done)) st = ['Working on it', '#fdab3d'];
+  const steps = arr(t.steps);
+  return `<button class="bd-row ${t.done ? 'done' : ''}" data-open="${esc(t.id)}">
+    <span class="bd-name">${t.important ? '<b class="bd-star">★</b>' : ''}${esc(t.title || 'Untitled task')}${steps.length ? ` <small>${steps.filter(x => x.done).length}/${steps.length}</small>` : ''}</span>
+    <span class="bd-st" style="background:${st[1]}">${st[0]}</span>
+    <span class="bd-due ${t.due && !t.done && isOver(t) ? 'over' : ''}">${t.due ? esc(Math.abs(dayDiff(t.due)) <= 1 ? dueText(t.due) : parseYmd(t.due).toLocaleDateString(undefined, {month:'short', day:'numeric'})) : '–'}</span>
+  </button>`;
+}
+function boardHTML(){
+  const groups = sortedProjects().map(pj => ({ id: pj.id, name: pj.name, color: pj.color, status: pj.status }));
+  if([...tasks.values()].some(t => !t.projectId || !projects.has(t.projectId))) groups.push({ id: 'none', name: 'No project', color: '#8a8886', status: null });
+  if(!groups.length) return `<div class="state"><strong>No projects yet</strong>Tap "+ New project" above.</div>`;
+  return groups.map(g => {
+    const list = [...tasks.values()].filter(t => (g.id === 'none' ? (!t.projectId || !projects.has(t.projectId)) : t.projectId === g.id) && matches(t));
+    const open = list.filter(t => !t.done).sort((a, b) => ord(a) - ord(b));
+    const done = list.filter(t => t.done).sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
+    const s = pjStats(g.id);
+    if(query && !list.length) return '';
+    return `<section class="bd-group" style="--pc:${esc(g.color)}">
+      <header class="bd-gh"><button class="bd-title" data-pj="${esc(g.id)}">${esc(g.name)}</button>${g.status ? statusPill(g.status) : ''}
+        <span class="bd-prog"><span class="pj-bar"><i style="width:${s.pct}%"></i></span>${s.done}/${s.total}</span></header>
+      <div class="bd-table">
+        <div class="bd-row bd-th"><span>Task</span><span>Status</span><span>Due</span></div>
+        ${open.map(boardRowHTML).join('')}
+        ${done.slice(0, 3).map(boardRowHTML).join('')}
+        ${done.length > 3 ? `<button class="bd-more" data-pj="${esc(g.id)}">+${done.length - 3} more done</button>` : ''}
+        ${!list.length ? '<div class="bd-empty">No tasks yet</div>' : ''}
+        ${g.id !== 'none' ? `<button class="bd-add" data-addto="${esc(g.id)}">+ Add task</button>` : ''}
+      </div>
+    </section>`;
+  }).join('');
+}
+async function newProject(){
+  const name = (prompt('Project name') || '').trim();
+  if(!name) return;
+  const order = Math.max(0, ...[...projects.values()].map(p => p.order)) + 1000;
+  const color = PJ_COLORS[projects.size % PJ_COLORS.length];
+  const { data, error } = await sb.from('projects').insert({ name: name.slice(0, 80), color, order, status: 'working' }).select().single();
+  if(error){ flash('Could not create the project'); return; }
+  projects.set(data.id, data); setProject(data.id); flash('Project created');
+}
+async function updateProject(id, fields){
+  const pj = projects.get(id); if(!pj) return;
+  projects.set(id, { ...pj, ...fields }); render();
+  const { error } = await sb.from('projects').update(fields).eq('id', id);
+  if(error){ projects.set(id, pj); render(); flash('Could not save'); } else flash('Saved');
+}
+async function projectMenu(){
+  const pj = projects.get(curProject); if(!pj) return;
+  const pick = await choose(pj.name, [
+    { label: 'Rename', value: 'rename' }, { label: 'Change status', value: 'status' },
+    { label: 'Change colour', value: 'color' }, { label: 'Move left', value: 'left' }, { label: 'Move right', value: 'right' },
+    { label: 'Delete project (keeps its tasks)', value: 'delete', danger: true },
+  ]);
+  if(pick === 'rename'){ const n = (prompt('Project name', pj.name) || '').trim(); if(n) updateProject(pj.id, { name: n.slice(0, 80) }); }
+  if(pick === 'status'){ const st = await choose('Status', Object.entries(PJ_STATUS).map(([v, [l]]) => ({ label: l, value: v }))); if(st) updateProject(pj.id, { status: st }); }
+  if(pick === 'color'){
+    const names = ['Green', 'Blue', 'Red', 'Orange', 'Purple', 'Pink', 'Sky', 'Dark green', 'Tangerine', 'Violet'];
+    const c = await choose('Colour', PJ_COLORS.map((v, i) => ({ label: names[i], value: v })));
+    if(c) updateProject(pj.id, { color: c });
+  }
+  if(pick === 'left' || pick === 'right'){
+    const list = sortedProjects(), i = list.findIndex(p => p.id === pj.id), j = pick === 'left' ? i - 1 : i + 1;
+    if(j < 0 || j >= list.length) return;
+    const other = list[j];
+    await updateProject(pj.id, { order: other.order }); await updateProject(other.id, { order: pj.order });
+  }
+  if(pick === 'delete'){
+    const ok = await choose(`Delete "${pj.name}"? Its tasks stay in All tasks.`, [{ label: 'Delete project', value: true, danger: true }]);
+    if(!ok) return;
+    projects.delete(pj.id); setProject('all');
+    const { error } = await sb.from('projects').delete().eq('id', pj.id);
+    if(error) flash('Could not delete'); else flash('Project deleted');
+  }
+}
+$('#projects').addEventListener('click', e => {
+  const b = e.target.closest('[data-pj]'); if(!b) return;
+  if(b.dataset.pj === 'new'){ newProject(); return; }
+  setProject(b.dataset.pj);
+  b.scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: 'smooth' });
+});
+$('#pjHead').addEventListener('click', e => { if(e.target.closest('[data-pjact="menu"]')) projectMenu(); });
+$('#board').addEventListener('click', e => {
+  const o = e.target.closest('[data-open]');
+  if(o){ selected = o.dataset.open; render(true); return; }
+  const add = e.target.closest('[data-addto]');
+  if(add){
+    const v = (prompt('New task') || '').trim(); if(!v) return;
+    createTask(newId(), {title:v, important:false, priority:'normal', done:false, notes:'', steps:[], links:[], files:[], created:Date.now(), completedAt:null, order: edgeOrder(1), projectId: add.dataset.addto});
+    return;
+  }
+  const g = e.target.closest('[data-pj]'); if(g) setProject(g.dataset.pj);
+});
+
 // ---------- live data from Supabase ----------
 let channel = null, needRefetch = false, loaded = false, openTaskId = new URLSearchParams(location.search).get('task');
 async function refetch(){
   if(!user) return;
   if(inflightTotal){ needRefetch = true; return; }
-  const { data, error } = await sb.from('tasks').select('*');
+  const [{ data, error }, pjRes] = await Promise.all([sb.from('tasks').select('*'), sb.from('projects').select('*').eq('archived', false)]);
+  if(!pjRes.error){ projects = new Map(pjRes.data.map(p => [p.id, p])); if(projects.size === 0 && !['all','board','none'].includes(curProject)) curProject = 'all'; }
   if(error){ setStatus("Can't reach your saved tasks right now. They'll appear when the connection is back."); return; }
   if(inflightTotal){ needRefetch = true; return; }
   const next = new Map();
@@ -831,6 +1005,12 @@ function subscribe(){
   if(channel) sb.removeChannel(channel);
   channel = sb.channel('tasks-live')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, onChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, p => {
+      if(p.eventType === 'DELETE' || (p.new && p.new.archived)) projects.delete((p.old && p.old.id) || p.new.id);
+      else projects.set(p.new.id, p.new);
+      if(!projects.has(curProject) && !['all','board','none'].includes(curProject)) curProject = 'all';
+      render();
+    })
     .subscribe(status => {
       if(status === 'SUBSCRIBED') refetch();
       if(status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setTimeout(() => { if(user) subscribe(); }, 4000);
