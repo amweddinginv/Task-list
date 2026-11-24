@@ -192,8 +192,8 @@ function matches(t){
   return hay.includes(q);
 }
 function inProject(t){
-  if(curProject === 'all' || curProject === 'board') return true;
-  if(curProject === 'none') return !t.projectId || !projects.has(t.projectId);
+  if(curProject === 'all') return true;
+  if(curProject === 'none' || curProject === 'board') return !t.projectId || !projects.has(t.projectId);
   return t.projectId === curProject;
 }
 function sorted(done){
@@ -253,13 +253,14 @@ function renderList(){
   renderProjects();
   const boardMode = curProject === 'board';
   $('#board').hidden = !boardMode;
-  $('#addForm').hidden = boardMode;
-  $('#list').hidden = boardMode;
-  if(boardMode){ $('#doneToggle').hidden = true; $('#doneList').hidden = true; $('#board').innerHTML = boardHTML(); return; }
+  $('#genTitle').hidden = !boardMode;
+  $('#addInput').placeholder = boardMode ? 'Add a general task' : 'Add a task';
+  if(boardMode && !(bdAdding && document.activeElement && document.activeElement.closest && document.activeElement.closest('#board'))) $('#board').innerHTML = boardHTML();
   const open = sorted(false), done = sorted(true);
   const list = $('#list');
   if(!query && curProject !== 'all' && !open.length && !done.length){
-    list.innerHTML = `<div class="state"><strong>No tasks here yet</strong>Add one above and it goes into this project.</div>`;
+    list.innerHTML = boardMode ? `<div class="state"><strong>No general tasks</strong>Things without a project (errands, house stuff) go here.</div>`
+      : `<div class="state"><strong>No tasks here yet</strong>Add one above and it goes into this project.</div>`;
     $('#doneToggle').hidden = true; $('#doneList').hidden = true; return;
   }
   if(query && !open.length && !done.length){
@@ -855,6 +856,7 @@ function renderProjects(){
       <small>${s.total ? `${s.done} of ${s.total} done · ${s.pct}%` : 'No tasks yet'}${s.over ? ` · <em>${s.over} overdue</em>` : ''}</small>
     </button>`;
   }).join('');
+  $('#projects').classList.toggle('compact', curProject === 'board');
   $('#projects').innerHTML = `
     <button class="pj-card pj-all ${curProject === 'all' ? 'on' : ''}" data-pj="all"><span class="pj-name">All tasks</span><small>${all.open} open</small></button>
     <button class="pj-card pj-all ${curProject === 'board' ? 'on' : ''}" data-pj="board"><span class="pj-name">▦ Overview</span><small>Every project</small></button>
@@ -873,42 +875,52 @@ function renderProjects(){
     $('#pjHead').innerHTML = `<div class="pj-head" style="--pc:#8a8886"><div class="pj-head-top"><span class="pj-dot"></span><b>No project</b></div><small>${s.open} open · tasks not in any project</small></div>`;
   } else $('#pjHead').innerHTML = '';
 }
-function boardRowHTML(t){
-  let st = ['To do', '#c4c4c4'];
-  if(t.done) st = ['Done', '#00c875'];
-  else if(t.due && isOver(t)) st = ['Overdue', '#e2445c'];
-  else if(t.due && dayDiff(t.due) === 0) st = ['Due today', '#579bfc'];
-  else if(arr(t.steps).some(x => x.done)) st = ['Working on it', '#fdab3d'];
-  const steps = arr(t.steps);
-  return `<button class="bd-row ${t.done ? 'done' : ''}" data-open="${esc(t.id)}">
-    <span class="bd-name">${t.important ? '<b class="bd-star">★</b>' : ''}${esc(t.title || 'Untitled task')}${steps.length ? ` <small>${steps.filter(x => x.done).length}/${steps.length}</small>` : ''}</span>
-    <span class="bd-st" style="background:${st[1]}">${st[0]}</span>
-    <span class="bd-due ${t.due && !t.done && isOver(t) ? 'over' : ''}">${t.due ? esc(Math.abs(dayDiff(t.due)) <= 1 ? dueText(t.due) : parseYmd(t.due).toLocaleDateString(undefined, {month:'short', day:'numeric'})) : '–'}</span>
-  </button>`;
+let bdAdding = null;                 // project id whose "Add a card" box is open
+const bdShowDone = new Set();        // columns showing their finished cards
+function cardHTML(t){
+  const steps = arr(t.steps), files = arr(t.files), links = arr(t.links);
+  const labels = [];
+  if(t.important) labels.push(`<i class="lb" style="background:#e2445c">Important</i>`);
+  if(!t.done && t.due && isOver(t)) labels.push(`<i class="lb" style="background:#c9372c">Overdue</i>`);
+  else if(!t.done && t.due && dayDiff(t.due) === 0) labels.push(`<i class="lb" style="background:#579bfc">Today</i>`);
+  if(!t.done && t.priority === 'low') labels.push(`<i class="lb" style="background:#00a86b">Low</i>`);
+  const meta = [];
+  if(t.due && !t.done) meta.push(`<span class="${isOver(t) ? 'over' : ''}">${ICON.cal}${esc(Math.abs(dayDiff(t.due)) <= 1 ? dueText(t.due) : parseYmd(t.due).toLocaleDateString(undefined, {month:'short', day:'numeric'}))}</span>`);
+  if(t.notes && String(t.notes).trim()) meta.push(`<span>${ICON.note}</span>`);
+  if(files.length) meta.push(`<span>${ICON.clip}${files.length}</span>`);
+  if(links.length) meta.push(`<span>${ICON.link}${links.length}</span>`);
+  if(steps.length) meta.push(`<span class="${steps.every(x => x.done) ? 'all' : ''}">☑ ${steps.filter(x => x.done).length}/${steps.length}</span>`);
+  return `<div class="tr-card ${t.done ? 'done' : ''}" data-open="${esc(t.id)}" draggable="true" role="button" tabindex="0">
+    ${labels.length ? `<div class="tr-labels">${labels.join('')}</div>` : ''}
+    <div class="tr-title"><button class="tr-check ${t.done ? 'on' : ''}" data-cardcheck="${esc(t.id)}" aria-label="${t.done ? 'Mark as not completed' : 'Mark as completed'}">${ICON.check}</button><span>${esc(t.title || 'Untitled task')}</span></div>
+    ${meta.length ? `<div class="tr-meta">${meta.join('')}</div>` : ''}
+  </div>`;
 }
 function boardHTML(){
-  const groups = sortedProjects().map(pj => ({ id: pj.id, name: pj.name, color: pj.color, status: pj.status }));
-  if([...tasks.values()].some(t => !t.projectId || !projects.has(t.projectId))) groups.push({ id: 'none', name: 'No project', color: '#8a8886', status: null });
-  if(!groups.length) return `<div class="state"><strong>No projects yet</strong>Tap "+ New project" above.</div>`;
-  return groups.map(g => {
-    const list = [...tasks.values()].filter(t => (g.id === 'none' ? (!t.projectId || !projects.has(t.projectId)) : t.projectId === g.id) && matches(t));
+  const cols = sortedProjects();
+  if(!cols.length) return `<div class="state"><strong>No projects yet</strong>Tap "+ New project" above.</div>`;
+  return `<div class="tr-board">${cols.map(pj => {
+    const list = [...tasks.values()].filter(t => t.projectId === pj.id && matches(t));
     const open = list.filter(t => !t.done).sort((a, b) => ord(a) - ord(b));
     const done = list.filter(t => t.done).sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
-    const s = pjStats(g.id);
-    if(query && !list.length) return '';
-    return `<section class="bd-group" style="--pc:${esc(g.color)}">
-      <header class="bd-gh"><button class="bd-title" data-pj="${esc(g.id)}">${esc(g.name)}</button>${g.status ? statusPill(g.status) : ''}
-        <span class="bd-prog"><span class="pj-bar"><i style="width:${s.pct}%"></i></span>${s.done}/${s.total}</span></header>
-      <div class="bd-table">
-        <div class="bd-row bd-th"><span>Task</span><span>Status</span><span>Due</span></div>
-        ${open.map(boardRowHTML).join('')}
-        ${done.slice(0, 3).map(boardRowHTML).join('')}
-        ${done.length > 3 ? `<button class="bd-more" data-pj="${esc(g.id)}">+${done.length - 3} more done</button>` : ''}
-        ${!list.length ? '<div class="bd-empty">No tasks yet</div>' : ''}
-        ${g.id !== 'none' ? `<button class="bd-add" data-addto="${esc(g.id)}">+ Add task</button>` : ''}
+    const s = pjStats(pj.id);
+    return `<section class="tr-col" data-col="${esc(pj.id)}" style="--pc:${esc(pj.color)}">
+      <header class="tr-head">
+        <button class="tr-name" data-pj="${esc(pj.id)}">${esc(pj.name)}</button>
+        <span class="tr-count">${s.open}</span>
+      </header>
+      <div class="tr-sub">${statusPill(pj.status)}<span class="pj-bar"><i style="width:${s.pct}%"></i></span><small>${s.pct}%</small></div>
+      <div class="tr-cards">
+        ${open.map(cardHTML).join('')}
+        ${done.length ? `<button class="tr-done" data-showdone="${esc(pj.id)}">${bdShowDone.has(pj.id) ? '▾' : '▸'} ${done.length} done</button>` : ''}
+        ${bdShowDone.has(pj.id) ? done.map(cardHTML).join('') : ''}
       </div>
+      ${bdAdding === pj.id
+        ? `<form class="tr-addform" data-addform="${esc(pj.id)}"><textarea rows="2" placeholder="Enter a title for this card…" maxlength="300"></textarea><div><button class="btn" type="submit">Add card</button><button type="button" class="tr-x" data-addcancel aria-label="Cancel">${ICON.x}</button></div></form>`
+        : `<button class="tr-add" data-addto="${esc(pj.id)}">+ Add a card</button>`}
     </section>`;
-  }).join('');
+  }).join('')}
+  <button class="tr-col tr-newcol" data-pj="new">+ Add another list</button></div>`;
 }
 async function newProject(){
   const name = (prompt('Project name') || '').trim();
@@ -960,16 +972,59 @@ $('#projects').addEventListener('click', e => {
   b.scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: 'smooth' });
 });
 $('#pjHead').addEventListener('click', e => { if(e.target.closest('[data-pjact="menu"]')) projectMenu(); });
+function boardAdd(pid, title){
+  createTask(newId(), {title, important:false, priority:'normal', done:false, notes:'', steps:[], links:[], files:[], created:Date.now(), completedAt:null, order: edgeOrder(1), projectId: pid});
+}
 $('#board').addEventListener('click', e => {
+  const chk = e.target.closest('[data-cardcheck]');
+  if(chk){ e.stopPropagation(); toggleDone(chk.dataset.cardcheck, chk); return; }
+  const add = e.target.closest('[data-addto]');
+  if(add){ bdAdding = add.dataset.addto; $('#board').innerHTML = boardHTML(); const ta = $('#board .tr-addform textarea'); if(ta) ta.focus(); return; }
+  if(e.target.closest('[data-addcancel]')){ bdAdding = null; $('#board').innerHTML = boardHTML(); return; }
+  const sd = e.target.closest('[data-showdone]');
+  if(sd){ const id = sd.dataset.showdone; bdShowDone.has(id) ? bdShowDone.delete(id) : bdShowDone.add(id); $('#board').innerHTML = boardHTML(); return; }
+  if(e.target.closest('.tr-addform')) return;
   const o = e.target.closest('[data-open]');
   if(o){ selected = o.dataset.open; render(true); return; }
-  const add = e.target.closest('[data-addto]');
-  if(add){
-    const v = (prompt('New task') || '').trim(); if(!v) return;
-    createTask(newId(), {title:v, important:false, priority:'normal', done:false, notes:'', steps:[], links:[], files:[], created:Date.now(), completedAt:null, order: edgeOrder(1), projectId: add.dataset.addto});
-    return;
-  }
-  const g = e.target.closest('[data-pj]'); if(g) setProject(g.dataset.pj);
+  const g = e.target.closest('[data-pj]');
+  if(g){ if(g.dataset.pj === 'new') newProject(); else setProject(g.dataset.pj); }
+});
+$('#board').addEventListener('submit', e => {
+  e.preventDefault();
+  const f = e.target.closest('[data-addform]'); if(!f) return;
+  const ta = f.querySelector('textarea'), v = ta.value.trim();
+  if(!v) return;
+  ta.value = '';
+  boardAdd(f.dataset.addform, v);
+  $('#board').innerHTML = boardHTML();
+  const again = $('#board .tr-addform textarea'); if(again) again.focus();   // keep adding, like Trello
+});
+$('#board').addEventListener('keydown', e => {
+  if(e.target.matches('.tr-addform textarea') && e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); e.target.closest('form').requestSubmit(); }
+  if(e.target.matches('.tr-addform textarea') && e.key === 'Escape'){ bdAdding = null; $('#board').innerHTML = boardHTML(); }
+  if(e.target.classList.contains('tr-card') && e.key === 'Enter'){ selected = e.target.dataset.open; render(true); }
+});
+// Drag a card to another list (desktop, and touch where the browser supports it).
+let dragCard = null;
+$('#board').addEventListener('dragstart', e => {
+  const c = e.target.closest('.tr-card'); if(!c) return;
+  dragCard = c.dataset.open; c.classList.add('dragging');
+  try { e.dataTransfer.setData('text/plain', dragCard); e.dataTransfer.effectAllowed = 'move'; } catch(err){}
+});
+$('#board').addEventListener('dragend', e => { const c = e.target.closest('.tr-card'); if(c) c.classList.remove('dragging'); document.querySelectorAll('.tr-col.over').forEach(x => x.classList.remove('over')); dragCard = null; });
+$('#board').addEventListener('dragover', e => {
+  const col = e.target.closest('[data-col]'); if(!col || !dragCard) return;
+  e.preventDefault();
+  document.querySelectorAll('.tr-col.over').forEach(x => { if(x !== col) x.classList.remove('over'); });
+  col.classList.add('over');
+});
+$('#board').addEventListener('drop', e => {
+  const col = e.target.closest('[data-col]'); if(!col || !dragCard) return;
+  e.preventDefault();
+  const t = tasks.get(dragCard), pid = col.dataset.col;
+  col.classList.remove('over');
+  if(t && t.projectId !== pid){ patch(t.id, {projectId: pid, order: edgeOrder(1, t.id)}); flash('Moved to ' + (projects.get(pid) || {}).name); }
+  dragCard = null;
 });
 
 // ---------- live data from Supabase ----------

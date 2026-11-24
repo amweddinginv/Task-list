@@ -167,7 +167,7 @@ These live in Supabase. The schema was applied as migration `tasks_schema`.
 
 ## Projects
 
-Projects appear as cards at the top of the Tasks tab, each with a progress bar and a status. Tapping a card filters the list to that project. The **Overview** card shows a Monday-style board of every project.
+Projects appear as cards at the top of the Tasks tab, each with a progress bar and a status. Tapping a card filters the list to that project. The **Overview** card shows a Trello-style board: one list per project (add cards inline, drag cards between lists on desktop), with the General list (tasks without a project) underneath.
 
 The projects live in `public.projects`:
 
